@@ -1,9 +1,8 @@
-
 import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import Event, { IEvent } from '../models/Event.js';
+import Event, { IEvent, Requirement } from '../models/Event.js';
 import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
@@ -45,6 +44,190 @@ const upload = multer({
     } else {
       cb(new Error('Only images and documents are allowed'));
     }
+  }
+});
+
+// PATCH /api/events/:eventId/requirements/:requirementId/notes - Update requirement notes
+router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, requirementId } = req.params;
+    const { departmentNotes } = req.body;
+    const userDepartment = (req as any).user.department;
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user's department is tagged in this event
+    if (!event.taggedDepartments.includes(userDepartment)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your department is not tagged in this event'
+      });
+    }
+
+    // Find and update the requirement
+    let requirementFound = false;
+    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, Requirement[]][]) {
+      const requirement = requirements.find(r => r.id === requirementId);
+      if (requirement) {
+        requirement.departmentNotes = departmentNotes;
+        requirement.lastUpdated = new Date().toISOString();
+        requirementFound = true;
+        break;
+      }
+    }
+
+    // Mark the departmentRequirements field as modified for Mongoose
+    event.markModified('departmentRequirements');
+
+    if (!requirementFound) {
+      return res.status(404).json({
+        success: false,
+        message: 'Requirement not found'
+      });
+    }
+
+    // Save the updated event
+    await event.save();
+
+    // Debug: Log the saved requirement to verify departmentNotes is saved
+    const savedRequirement = Object.values(event.departmentRequirements)
+      .flat()
+      .find(r => r.id === requirementId);
+    console.log('🔍 Saved requirement after update:', JSON.stringify(savedRequirement, null, 2));
+
+    res.status(200).json({
+      success: true,
+      message: 'Requirement notes updated successfully',
+      data: event
+    });
+  } catch (error) {
+    console.error('Error updating requirement notes:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update requirement notes',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// PATCH /api/events/:eventId/requirements/:requirementId/status - Update requirement status
+router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, requirementId } = req.params;
+    const { status } = req.body;
+    const userDepartment = (req as any).user.department;
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user's department is tagged in this event
+    if (!event.taggedDepartments.includes(userDepartment)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your department is not tagged in this event'
+      });
+    }
+
+    // Find and update the requirement
+    let requirementFound = false;
+    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, Requirement[]][]) {
+      const requirement = requirements.find(r => r.id === requirementId);
+      if (requirement) {
+        requirement.status = status;
+        requirement.lastUpdated = new Date().toISOString();
+        requirementFound = true;
+        break;
+      }
+    }
+
+    // Mark the departmentRequirements field as modified for Mongoose
+    event.markModified('departmentRequirements');
+
+    if (!requirementFound) {
+      return res.status(404).json({
+        success: false,
+        message: 'Requirement not found'
+      });
+    }
+
+    // Save the updated event
+    await event.save();
+
+    // Debug: Log the saved requirement to verify status is saved
+    const savedRequirement = Object.values(event.departmentRequirements)
+      .flat()
+      .find(r => r.id === requirementId);
+    console.log('🔍 Saved requirement status after update:', JSON.stringify(savedRequirement, null, 2));
+
+    res.status(200).json({
+      success: true,
+      message: 'Requirement status updated successfully',
+      data: event
+    });
+  } catch (error) {
+    console.error('Error updating requirement status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update requirement status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// GET /api/events/tagged - Fetch events where user's department is tagged
+router.get('/tagged', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const userDepartment = (req as any).user.department;
+    console.log('🔍 Fetching tagged events for department:', userDepartment);
+
+    if (!userDepartment) {
+      return res.status(400).json({
+        success: false,
+        message: 'User department not found'
+      });
+    }
+
+    const events = await Event.find({
+      taggedDepartments: userDepartment,
+      status: { $ne: 'draft' } // Exclude draft events
+    })
+    .populate('createdBy', 'name email department')
+    .sort({ createdAt: -1 });
+
+    console.log(`📋 Found ${events.length} tagged events for department ${userDepartment}`);
+
+    // Debug: Log the first event's requirements to see if departmentNotes is preserved
+    if (events.length > 0) {
+      const firstEvent = events[0];
+      const requirements = Object.values(firstEvent.departmentRequirements).flat();
+      console.log('🔍 Sample requirements from tagged events:', JSON.stringify(requirements[0], null, 2));
+    }
+
+    res.status(200).json({
+      success: true,
+      count: events.length,
+      data: events
+    });
+  } catch (error) {
+    console.error('Error fetching tagged events:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch tagged events',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
   }
 });
 

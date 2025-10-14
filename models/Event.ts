@@ -1,5 +1,20 @@
 import mongoose, { Document, Schema } from 'mongoose';
 
+export interface Requirement {
+  id: string;
+  name: string;
+  selected: boolean;
+  notes: string;
+  type: string;
+  totalQuantity: number;
+  isAvailable: boolean;
+  availabilityNotes: string;
+  quantity: number;
+  status?: string;
+  departmentNotes?: string;
+  lastUpdated?: string;
+}
+
 export interface IGovFile {
   filename: string;
   originalName: string;
@@ -52,7 +67,7 @@ export interface IEvent extends Document {
   
   // Department & Requirements
   taggedDepartments: string[];
-  departmentRequirements: any; // Will store the requirements object
+  departmentRequirements: Record<string, Requirement[]>;
   
   // Status & Metadata
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed';
