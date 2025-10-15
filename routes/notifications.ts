@@ -1,5 +1,6 @@
 import express from 'express';
 import NotificationRead from '../models/NotificationRead.js';
+import StatusNotification from '../models/StatusNotification.js';
 import Event from '../models/Event.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -40,13 +41,7 @@ router.post('/mark-read', authenticateToken, async (req, res) => {
     }
     const { notificationId, eventId, notificationType, category } = req.body;
     
-    console.log(`📖 Marking notification as read:`, {
-      userId,
-      notificationId,
-      eventId,
-      notificationType,
-      category
-    });
+    console.log('📖 Marking notification as read');
     
     // Check if already marked as read
     const existingRead = await NotificationRead.findOne({
@@ -85,7 +80,7 @@ router.post('/mark-read', authenticateToken, async (req, res) => {
         readAt: notificationRead.readAt
       });
       
-      console.log(`🔄 Broadcasted notification-read event for ${notificationId}`);
+      console.log('🔄 Notification read event broadcasted');
     }
     
     res.json({
@@ -111,7 +106,7 @@ router.post('/mark-multiple-read', authenticateToken, async (req, res) => {
     }
     const { notifications } = req.body; // Array of notification objects
     
-    console.log(`📖 Marking ${notifications.length} notifications as read for user ${userId}`);
+    console.log(`📖 Marking ${notifications.length} notifications as read`);
     
     const readRecords = [];
     
@@ -228,6 +223,120 @@ router.post('/broadcast-new', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to broadcast notification'
+    });
+  }
+});
+
+// Get status notifications for current user
+router.get('/status', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+    
+    console.log('📋 Fetching status notifications');
+    
+    // Get status notifications for events created by this user
+    const statusNotifications = await StatusNotification.find({ requestorId: userId })
+      .populate('eventId', 'eventTitle')
+      .populate('updatedBy', 'name')
+      .sort({ createdAt: -1 })
+      .limit(50); // Limit to last 50 notifications
+    
+    console.log(`📋 Found ${statusNotifications.length} status notifications`);
+    
+    res.json({
+      success: true,
+      data: statusNotifications
+    });
+  } catch (error) {
+    console.error('Error fetching status notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch status notifications'
+    });
+  }
+});
+
+// Create status notification (called when requirement status is updated)
+router.post('/status', authenticateToken, async (req, res) => {
+  try {
+    const { 
+      eventId, 
+      requestorId, 
+      departmentName, 
+      requirementName, 
+      requirementId,
+      oldStatus, 
+      newStatus, 
+      departmentNotes 
+    } = req.body;
+    
+    const updatedBy = req.user?.id;
+    
+    console.log('📝 Creating status notification');
+    
+    // Create status notification
+    const statusNotification = new StatusNotification({
+      eventId,
+      requestorId,
+      departmentName,
+      requirementName,
+      requirementId,
+      oldStatus,
+      newStatus,
+      departmentNotes,
+      updatedBy
+    });
+    
+    await statusNotification.save();
+    
+    // Populate the notification for real-time broadcast
+    await statusNotification.populate('eventId', 'eventTitle');
+    await statusNotification.populate('updatedBy', 'name');
+    
+    // Emit real-time status update to the requestor
+    const io = req.app.get('io');
+    if (io) {
+      const statusUpdateData = {
+        _id: statusNotification._id,
+        eventId: statusNotification.eventId,
+        requestorId: statusNotification.requestorId,
+        departmentName: statusNotification.departmentName,
+        requirementName: statusNotification.requirementName,
+        requirementId: statusNotification.requirementId,
+        oldStatus: statusNotification.oldStatus,
+        newStatus: statusNotification.newStatus,
+        departmentNotes: statusNotification.departmentNotes,
+        updatedAt: statusNotification.updatedAt,
+        type: 'status_update',
+        notificationType: 'status_update'
+      };
+      
+      // Send to specific user room
+      io.to(`user-${requestorId}`).emit('status-update', statusUpdateData);
+      
+      // Also send as general notification for popup
+      io.to(`user-${requestorId}`).emit('new-notification', {
+        ...statusUpdateData,
+        eventTitle: (statusNotification.eventId as any)?.eventTitle || 'Unknown Event',
+        message: `${requirementName} status changed to "${newStatus}" by ${departmentName}`
+      });
+      
+      console.log('🔄 Status update broadcasted');
+    }
+    
+    res.json({
+      success: true,
+      message: 'Status notification created successfully',
+      data: statusNotification
+    });
+  } catch (error) {
+    console.error('Error creating status notification:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to create status notification'
     });
   }
 });

@@ -157,7 +157,7 @@ router.post('/send', authenticateToken, async (req: Request, res: Response) => {
       .populate('senderId', 'email department')
       .populate('receiverId', 'email department');
 
-    console.log(`📨 Message sent from ${(req.user as any)?.email} to receiver ${receiverIdStr} for event ${eventId}`);
+    console.log('📨 Message sent successfully');
 
     // Emit real-time message to receiver
     const io = (req as any).app.get('io');
@@ -174,7 +174,7 @@ router.post('/send', authenticateToken, async (req: Request, res: Response) => {
         conversationId: `${eventId}-${senderIdStr}`
       });
       
-      console.log(`🔔 Real-time message sent to user-${receiverIdStr}`);
+      console.log('🔔 Real-time message sent');
     }
 
     res.status(201).json({
@@ -264,8 +264,7 @@ router.post('/send-file', authenticateToken, upload.single('file'), async (req: 
       .populate('senderId', 'email department')
       .populate('receiverId', 'email department');
 
-    console.log(`📎 File message sent from ${(req.user as any)?.email} to receiver ${receiverIdStr} for event ${eventId}`);
-    console.log(`📁 File: ${file.originalname} (${file.size} bytes)`);
+    console.log('📎 File message sent successfully');
 
     // Emit real-time message to receiver
     const io = (req as any).app.get('io');
@@ -282,7 +281,7 @@ router.post('/send-file', authenticateToken, upload.single('file'), async (req: 
         conversationId: `${eventId}-${senderIdStr}`
       });
       
-      console.log(`🔔 Real-time file message sent to user-${receiverIdStr}`);
+      console.log('🔔 Real-time file message sent');
     }
 
     res.status(201).json({

@@ -83,13 +83,13 @@ io.on('connection', (socket) => {
   socket.on('join-user-room', (userId) => {
     // Prevent duplicate room joins
     if (connectedUsers.has(userId)) {
-      console.log(`⚠️ User ${userId} already connected, skipping duplicate join`);
+      console.log(`⚠️ User already connected, skipping duplicate join`);
       return;
     }
 
     socket.join(`user-${userId}`);
     connectedUsers.set(userId, socket.id);
-    console.log(`👤 User ${userId} joined their room`);
+    console.log(`👤 User joined their room`);
   });
 
   // Test connection handler
@@ -115,7 +115,7 @@ io.on('connection', (socket) => {
     for (const [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
         connectedUsers.delete(userId);
-        console.log(`🔌 User ${userId} disconnected and cleaned up`);
+        console.log(`🔌 User disconnected and cleaned up`);
         break;
       }
     }

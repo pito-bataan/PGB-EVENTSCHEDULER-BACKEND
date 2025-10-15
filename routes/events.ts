@@ -1,9 +1,10 @@
 import express, { Request, Response } from 'express';
+import Event from '../models/Event.js';
+import StatusNotification from '../models/StatusNotification.js';
+import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import Event, { IEvent, Requirement } from '../models/Event.js';
-import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -73,7 +74,7 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
 
     // Find and update the requirement
     let requirementFound = false;
-    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, Requirement[]][]) {
+    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
       const requirement = requirements.find(r => r.id === requirementId);
       if (requirement) {
         requirement.departmentNotes = departmentNotes;
@@ -123,6 +124,8 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     const { eventId, requirementId } = req.params;
     const { status } = req.body;
     const userDepartment = (req as any).user.department;
+    
+    console.log('🔄 STATUS UPDATE REQUEST received');
 
     // Find the event
     const event = await Event.findById(eventId);
@@ -143,11 +146,18 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
 
     // Find and update the requirement
     let requirementFound = false;
-    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, Requirement[]][]) {
+    let oldStatus = '';
+    let requirementName = '';
+    let updatedRequirement: any = null;
+    
+    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
       const requirement = requirements.find(r => r.id === requirementId);
       if (requirement) {
+        oldStatus = requirement.status || 'pending';
+        requirementName = requirement.name || 'Unknown Requirement';
         requirement.status = status;
         requirement.lastUpdated = new Date().toISOString();
+        updatedRequirement = requirement;
         requirementFound = true;
         break;
       }
@@ -166,11 +176,64 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     // Save the updated event
     await event.save();
 
-    // Debug: Log the saved requirement to verify status is saved
+    // Create status notification if status actually changed
+    if (oldStatus !== status) {
+      try {
+        const statusNotification = new StatusNotification({
+          eventId: event._id,
+          requestorId: event.createdBy,
+          departmentName: userDepartment,
+          requirementName: requirementName,
+          requirementId: requirementId,
+          oldStatus: oldStatus,
+          newStatus: status,
+          departmentNotes: updatedRequirement?.departmentNotes || '',
+          updatedBy: (req as any).user.id
+        });
+
+        await statusNotification.save();
+        console.log('📝 Status notification created');
+
+        // Emit real-time status update to the requestor
+        const io = req.app.get('io');
+        if (io) {
+          const statusUpdateData = {
+            _id: statusNotification._id,
+            eventId: event._id,
+            requestorId: event.createdBy,
+            departmentName: userDepartment,
+            requirementName: requirementName,
+            requirementId: requirementId,
+            oldStatus: oldStatus,
+            newStatus: status,
+            departmentNotes: updatedRequirement?.departmentNotes || '',
+            updatedAt: statusNotification.updatedAt,
+            type: 'status_update',
+            notificationType: 'status_update'
+          };
+          
+          // Send to specific user room
+          io.to(`user-${event.createdBy}`).emit('status-update', statusUpdateData);
+          
+          // Also send as general notification for popup
+          io.to(`user-${event.createdBy}`).emit('new-notification', {
+            ...statusUpdateData,
+            eventTitle: event.eventTitle,
+            message: `${requirementName} status changed to "${status}" by ${userDepartment}`
+          });
+          console.log('🔄 Status update broadcasted');
+        }
+      } catch (notificationError) {
+        console.error('Error creating status notification:', notificationError);
+        // Don't fail the main request if notification creation fails
+      }
+    }
+
+    // Verify status was saved successfully
     const savedRequirement = Object.values(event.departmentRequirements)
       .flat()
-      .find(r => r.id === requirementId);
-    console.log('🔍 Saved requirement status after update:', JSON.stringify(savedRequirement, null, 2));
+      .find((r: any) => r.id === requirementId);
+    console.log('✅ Requirement status updated successfully');
 
     res.status(200).json({
       success: true,
@@ -191,7 +254,7 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
 router.get('/tagged', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userDepartment = (req as any).user.department;
-    console.log('🔍 Fetching tagged events for department:', userDepartment);
+    console.log('📥 GET /tagged - Request received');
 
     if (!userDepartment) {
       return res.status(400).json({
@@ -207,14 +270,7 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
     .populate('createdBy', 'name email department')
     .sort({ createdAt: -1 });
 
-    console.log(`📋 Found ${events.length} tagged events for department ${userDepartment}`);
-
-    // Debug: Log the first event's requirements to see if departmentNotes is preserved
-    if (events.length > 0) {
-      const firstEvent = events[0];
-      const requirements = Object.values(firstEvent.departmentRequirements).flat();
-      console.log('🔍 Sample requirements from tagged events:', JSON.stringify(requirements[0], null, 2));
-    }
+    console.log(`📋 Found ${events.length} tagged events`);
 
     res.status(200).json({
       success: true,
