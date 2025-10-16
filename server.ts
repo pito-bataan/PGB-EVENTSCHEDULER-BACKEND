@@ -32,10 +32,17 @@ console.log('📋 Environment variables loaded:', Object.keys(process.env).filte
 const app = express();
 const httpServer = createServer(app);
 
+// CORS allowed origins from environment variable or defaults
+const allowedOrigins = process.env.CORS_ORIGINS 
+  ? process.env.CORS_ORIGINS.split(',') 
+  : ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"];
+
+console.log('🌐 CORS allowed origins:', allowedOrigins);
+
 // Re-enable Socket.IO server with proper connection management
 const io = new Server(httpServer, {
   cors: {
-    origin: "http://localhost:5173", // Vite dev server
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization"]
@@ -61,7 +68,7 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 // Middleware
 app.use(cors({
-  origin: 'http://localhost:5173', // Your frontend URL
+  origin: allowedOrigins,
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization']
