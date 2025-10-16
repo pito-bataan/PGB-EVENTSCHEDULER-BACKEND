@@ -321,7 +321,7 @@ router.get('/unread-count/:eventId/:userId', authenticateToken, async (req: Requ
       receiverIdStr = String(currentUserId);
     }
 
-    console.log(`🔍 Unread count query - Event: ${eventId}, Sender: ${senderIdStr}, Receiver: ${receiverIdStr}`);
+    console.log('🔍 Fetching unread message count');
 
     const unreadCount = await Message.countDocuments({
       eventId,

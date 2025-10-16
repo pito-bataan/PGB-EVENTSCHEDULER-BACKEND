@@ -1,6 +1,7 @@
 import express from 'express';
 import NotificationRead from '../models/NotificationRead.js';
 import StatusNotification from '../models/StatusNotification.js';
+import Notification from '../models/Notification.js';
 import Event from '../models/Event.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -277,7 +278,28 @@ router.post('/status', authenticateToken, async (req, res) => {
     
     console.log('📝 Creating status notification');
     
-    // Create status notification
+    // Get event title for the notification message
+    const event = await Event.findById(eventId);
+    const eventTitle = event?.eventTitle || 'Unknown Event';
+    
+    // Create notification in main notifications collection
+    const notificationId = `status-${eventId}-${requirementId}`;
+    const notification = new Notification({
+      id: notificationId,
+      title: "Status Updated",
+      message: `"${requirementName}" status: "${newStatus}" by ${departmentName} for event "${eventTitle}"`,
+      type: "status",
+      category: "status",
+      eventId: eventId.toString(),
+      requirementId: requirementId,
+      departmentNotes: departmentNotes || '',
+      userId: requestorId.toString()
+    });
+
+    await notification.save();
+    console.log('📝 Status notification created in main notifications collection');
+    
+    // Create legacy status notification for backward compatibility
     const statusNotification = new StatusNotification({
       eventId,
       requestorId,
@@ -291,6 +313,7 @@ router.post('/status', authenticateToken, async (req, res) => {
     });
     
     await statusNotification.save();
+    console.log('📝 Legacy status notification also created');
     
     // Populate the notification for real-time broadcast
     await statusNotification.populate('eventId', 'eventTitle');

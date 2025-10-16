@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express';
 import Event from '../models/Event.js';
 import StatusNotification from '../models/StatusNotification.js';
+import Notification from '../models/Notification.js';
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
@@ -179,6 +180,25 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     // Create status notification if status actually changed
     if (oldStatus !== status) {
       try {
+        // Create notification in main notifications collection
+        const eventIdStr = (event._id as any).toString();
+        const notificationId = `status-${eventIdStr}-${requirementId}`;
+        const notification = new Notification({
+          id: notificationId,
+          title: "Status Updated",
+          message: `"${requirementName}" status: "${status}" by ${userDepartment} for event "${event.eventTitle}"`,
+          type: "status",
+          category: "status",
+          eventId: eventIdStr,
+          requirementId: requirementId,
+          departmentNotes: updatedRequirement?.departmentNotes || '',
+          userId: (event.createdBy as any).toString()
+        });
+
+        await notification.save();
+        console.log('📝 Status notification created in main notifications collection');
+
+        // Keep the old StatusNotification for backward compatibility (optional)
         const statusNotification = new StatusNotification({
           eventId: event._id,
           requestorId: event.createdBy,
@@ -192,7 +212,7 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         });
 
         await statusNotification.save();
-        console.log('📝 Status notification created');
+        console.log('📝 Legacy status notification also created');
 
         // Emit real-time status update to the requestor
         const io = req.app.get('io');
