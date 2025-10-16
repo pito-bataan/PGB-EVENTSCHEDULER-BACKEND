@@ -264,7 +264,69 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     console.error('Error updating requirement status:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to update requirement status',
+      message: 'Failed to update event status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// PATCH /api/events/:id/status - Update event status (Admin only - Approve/Reject)
+router.patch('/:id/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    
+    console.log(`🔄 EVENT STATUS UPDATE REQUEST: ${id} -> ${status}`);
+    
+    // Validate status
+    if (!['approved', 'rejected', 'submitted', 'cancelled'].includes(status)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid status. Must be approved, rejected, submitted, or cancelled'
+      });
+    }
+    
+    // Find and update the event
+    const event = await Event.findByIdAndUpdate(
+      id,
+      { status },
+      { new: true }
+    ).populate('createdBy', 'name email department');
+    
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+    
+    console.log(`✅ Event status updated: ${event.eventTitle} -> ${status}`);
+    
+    // Emit Socket.IO event for real-time updates
+    const io = req.app.get('io');
+    if (io) {
+      // Notify the event creator
+      io.to(`user-${event.createdBy}`).emit('event-status-updated', {
+        eventId: event._id,
+        eventTitle: event.eventTitle,
+        status: status,
+        message: `Your event "${event.eventTitle}" has been ${status}`
+      });
+      
+      // Broadcast to all admins
+      io.emit('event-updated', event);
+    }
+    
+    res.status(200).json({
+      success: true,
+      message: `Event ${status} successfully`,
+      data: event
+    });
+  } catch (error) {
+    console.error('Error updating event status:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update event status',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

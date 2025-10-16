@@ -18,19 +18,39 @@ router.get('/:department', authenticateToken, async (req, res) => {
         permissions: {
           myRequirements: false,
           manageLocation: false,
-          myCalendar: false
+          myCalendar: false,
+          allEvents: false,
+          taggedDepartments: false
         }
       } as any;
     } else {
-      // Ensure backward compatibility - add myCalendar if it doesn't exist
+      // Ensure backward compatibility - add new fields if they don't exist
+      let needsUpdate = false;
+      const updates: any = {};
+      
       if (permissions.permissions && typeof permissions.permissions.myCalendar === 'undefined') {
         permissions.permissions.myCalendar = false;
-        // Save the updated permissions to database
+        updates['permissions.myCalendar'] = false;
+        needsUpdate = true;
+      }
+      
+      if (permissions.permissions && typeof permissions.permissions.allEvents === 'undefined') {
+        permissions.permissions.allEvents = false;
+        updates['permissions.allEvents'] = false;
+        needsUpdate = true;
+      }
+      
+      if (permissions.permissions && typeof permissions.permissions.taggedDepartments === 'undefined') {
+        permissions.permissions.taggedDepartments = false;
+        updates['permissions.taggedDepartments'] = false;
+        needsUpdate = true;
+      }
+      
+      // Save the updated permissions to database if needed
+      if (needsUpdate) {
         await DepartmentPermissions.findOneAndUpdate(
           { department },
-          { 
-            'permissions.myCalendar': false 
-          }
+          updates
         );
       }
     }
@@ -84,7 +104,7 @@ router.put('/:department', authenticateToken, async (req, res) => {
     }
     
     // Validate permission fields
-    const { myRequirements, manageLocation, myCalendar } = permissions;
+    const { myRequirements, manageLocation, myCalendar, allEvents, taggedDepartments } = permissions;
     if (typeof myRequirements !== 'boolean' || typeof manageLocation !== 'boolean' || typeof myCalendar !== 'boolean') {
       return res.status(400).json({
         success: false,
@@ -100,7 +120,9 @@ router.put('/:department', authenticateToken, async (req, res) => {
         permissions: {
           myRequirements,
           manageLocation,
-          myCalendar
+          myCalendar,
+          allEvents: allEvents || false,
+          taggedDepartments: taggedDepartments || false
         },
         updatedBy: userId
       },
@@ -141,7 +163,9 @@ router.delete('/:department', authenticateToken, async (req, res) => {
         permissions: {
           myRequirements: true,
           manageLocation: true,
-          myCalendar: true
+          myCalendar: true,
+          allEvents: true,
+          taggedDepartments: true
         },
         updatedBy: userId
       },

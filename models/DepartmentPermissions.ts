@@ -6,6 +6,8 @@ export interface IDepartmentPermissions extends Document {
     myRequirements: boolean;
     manageLocation: boolean;
     myCalendar: boolean;
+    allEvents: boolean;
+    taggedDepartments: boolean;
   };
   updatedBy: mongoose.Types.ObjectId;
   createdAt: Date;
@@ -29,6 +31,14 @@ const DepartmentPermissionsSchema: Schema = new Schema({
       default: false
     },
     myCalendar: {
+      type: Boolean,
+      default: false
+    },
+    allEvents: {
+      type: Boolean,
+      default: false
+    },
+    taggedDepartments: {
       type: Boolean,
       default: false
     }
