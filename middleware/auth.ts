@@ -77,7 +77,11 @@ export const requireAdmin = (req: Request, res: Response, next: NextFunction) =>
     });
   }
 
-  if (req.user.role !== 'Admin') {
+  // Allow both 'Admin' and 'superadmin' roles (case-insensitive)
+  const userRole = req.user.role?.toLowerCase();
+  const allowedRoles = ['admin', 'superadmin'];
+  
+  if (!allowedRoles.includes(userRole)) {
     return res.status(403).json({
       success: false,
       message: 'Admin access required'
