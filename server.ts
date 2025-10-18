@@ -89,15 +89,24 @@ io.on('connection', (socket) => {
   console.log('🔌 User connected:', socket.id);
   // Join user to their personal room (for receiving messages)
   socket.on('join-user-room', (userId) => {
-    // Prevent duplicate room joins
+    // Check if user is already connected with a different socket
     if (connectedUsers.has(userId)) {
-      console.log(`⚠️ User already connected, skipping duplicate join`);
-      return;
+      const oldSocketId = connectedUsers.get(userId);
+      if (oldSocketId !== socket.id) {
+        console.log(`🔄 User ${userId} reconnecting - updating socket ID from ${oldSocketId} to ${socket.id}`);
+        // Update to new socket ID
+        connectedUsers.set(userId, socket.id);
+      } else {
+        console.log(`✅ User ${userId} already in room with same socket`);
+      }
+    } else {
+      console.log(`👤 New user ${userId} joining room`);
+      connectedUsers.set(userId, socket.id);
     }
 
+    // Always join the room (in case of reconnection)
     socket.join(`user-${userId}`);
-    connectedUsers.set(userId, socket.id);
-    console.log(`👤 User joined their room`);
+    console.log(`✅ User ${userId} is now in room user-${userId}`);
   });
 
   // Test connection handler

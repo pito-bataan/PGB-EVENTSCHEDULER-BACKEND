@@ -123,10 +123,10 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
 router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { eventId, requirementId } = req.params;
-    const { status } = req.body;
+    const { status, declineReason } = req.body;
     const userDepartment = (req as any).user.department;
     
-    console.log('🔄 STATUS UPDATE REQUEST received');
+    console.log('🔄 STATUS UPDATE REQUEST received', { status, declineReason });
 
     // Find the event
     const event = await Event.findById(eventId);
@@ -158,6 +158,13 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         requirementName = requirement.name || 'Unknown Requirement';
         requirement.status = status;
         requirement.lastUpdated = new Date().toISOString();
+        
+        // Save decline reason if status is declined
+        if (status === 'declined' && declineReason) {
+          requirement.declineReason = declineReason;
+          console.log('💾 Saving decline reason:', declineReason);
+        }
+        
         updatedRequirement = requirement;
         requirementFound = true;
         break;
@@ -177,8 +184,43 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     // Save the updated event
     await event.save();
 
-    // Create status notification if status actually changed
+    // Emit real-time status update FIRST (before notification creation)
     if (oldStatus !== status) {
+      const io = req.app.get('io');
+      if (io) {
+        const statusUpdateData = {
+          eventId: event._id,
+          requestorId: event.createdBy,
+          departmentName: userDepartment,
+          requirementName: requirementName,
+          requirementId: requirementId,
+          oldStatus: oldStatus,
+          newStatus: status,
+          departmentNotes: updatedRequirement?.departmentNotes || '',
+          declineReason: status === 'declined' ? declineReason : undefined,
+          type: 'status_update',
+          notificationType: 'status_update'
+        };
+        
+        // Send to event creator
+        io.to(`user-${event.createdBy}`).emit('status-update', statusUpdateData);
+        io.to(`user-${event.createdBy}`).emit('new-notification', {
+          ...statusUpdateData,
+          eventTitle: event.eventTitle,
+          message: `${requirementName} status changed to "${status}" by ${userDepartment}`
+        });
+        
+        // ALSO send to the user who made the update (for their own badge update!)
+        const updatingUserId = (req as any).user.id;
+        if (updatingUserId && updatingUserId.toString() !== event.createdBy.toString()) {
+          io.to(`user-${updatingUserId}`).emit('status-update', statusUpdateData);
+          console.log(`🔔 Status update sent to updating user: ${updatingUserId}`);
+        }
+        
+        console.log('🔄 Status update broadcasted to all relevant users');
+      }
+      
+      // Then try to create notifications (non-critical)
       try {
         // Create notification in main notifications collection
         const eventIdStr = (event._id as any).toString();
@@ -213,36 +255,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
 
         await statusNotification.save();
         console.log('📝 Legacy status notification also created');
-
-        // Emit real-time status update to the requestor
-        const io = req.app.get('io');
-        if (io) {
-          const statusUpdateData = {
-            _id: statusNotification._id,
-            eventId: event._id,
-            requestorId: event.createdBy,
-            departmentName: userDepartment,
-            requirementName: requirementName,
-            requirementId: requirementId,
-            oldStatus: oldStatus,
-            newStatus: status,
-            departmentNotes: updatedRequirement?.departmentNotes || '',
-            updatedAt: statusNotification.updatedAt,
-            type: 'status_update',
-            notificationType: 'status_update'
-          };
-          
-          // Send to specific user room
-          io.to(`user-${event.createdBy}`).emit('status-update', statusUpdateData);
-          
-          // Also send as general notification for popup
-          io.to(`user-${event.createdBy}`).emit('new-notification', {
-            ...statusUpdateData,
-            eventTitle: event.eventTitle,
-            message: `${requirementName} status changed to "${status}" by ${userDepartment}`
-          });
-          console.log('🔄 Status update broadcasted');
-        }
       } catch (notificationError) {
         console.error('Error creating status notification:', notificationError);
         // Don't fail the main request if notification creation fails
@@ -265,6 +277,182 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     res.status(500).json({
       success: false,
       message: 'Failed to update event status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// PATCH /api/events/:eventId/requirements/:requirementId/departments - Change requirement department tags
+router.patch('/:eventId/requirements/:requirementId/departments', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, requirementId } = req.params;
+    const { departments } = req.body;
+    
+    console.log('🔄 DEPARTMENT CHANGE REQUEST:', { eventId, requirementId, departments });
+
+    if (!Array.isArray(departments) || departments.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Departments array is required and cannot be empty'
+      });
+    }
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Find the requirement in current departments
+    let requirement: any = null;
+    let oldDepartment: string = '';
+    
+    for (const [dept, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
+      const foundReq = requirements.find(r => r.id === requirementId);
+      if (foundReq) {
+        requirement = foundReq;
+        oldDepartment = dept;
+        // Remove from old department
+        event.departmentRequirements[dept] = requirements.filter(r => r.id !== requirementId);
+        if (event.departmentRequirements[dept].length === 0) {
+          delete event.departmentRequirements[dept];
+        }
+        break;
+      }
+    }
+
+    if (!requirement) {
+      return res.status(404).json({
+        success: false,
+        message: 'Requirement not found'
+      });
+    }
+
+    // Add requirement to new department(s)
+    for (const newDept of departments) {
+      if (!event.departmentRequirements[newDept]) {
+        event.departmentRequirements[newDept] = [];
+      }
+      event.departmentRequirements[newDept].push(requirement);
+    }
+
+    // Update tagged departments list - ONLY include departments that have requirements
+    const allDepts = Object.keys(event.departmentRequirements);
+    event.taggedDepartments = allDepts; // Replace entire array with only departments that have requirements
+
+    // Mark as modified for Mongoose
+    event.markModified('departmentRequirements');
+    event.markModified('taggedDepartments');
+
+    // Save the event
+    await event.save();
+
+    console.log(`✅ Requirement moved from ${oldDepartment} to ${departments.join(', ')}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Department tags updated successfully',
+      data: event
+    });
+  } catch (error) {
+    console.error('Error updating department tags:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update department tags',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// POST /api/events/:eventId/add-department - Add department with requirements to existing event
+router.post('/:eventId/add-department', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const { departmentName, requirements } = req.body;
+    
+    console.log('➕ ADD DEPARTMENT REQUEST:', { eventId, departmentName, requirementsCount: requirements?.length });
+
+    if (!departmentName || !Array.isArray(requirements) || requirements.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Department name and requirements array are required'
+      });
+    }
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Initialize departmentRequirements if it doesn't exist
+    if (!event.departmentRequirements) {
+      event.departmentRequirements = {};
+    }
+
+    // Add or update requirements for this department
+    if (!event.departmentRequirements[departmentName]) {
+      event.departmentRequirements[departmentName] = [];
+    }
+
+    // Add new requirements (filter out duplicates by name)
+    requirements.forEach((newReq: any) => {
+      if (newReq.selected) {
+        const existingReq = event.departmentRequirements[departmentName].find(
+          (r: any) => r.name === newReq.name
+        );
+        
+        if (!existingReq) {
+          // Add new requirement with availability info
+          event.departmentRequirements[departmentName].push({
+            id: newReq.id,
+            name: newReq.name,
+            type: newReq.type,
+            selected: true,
+            quantity: newReq.quantity || undefined,
+            notes: newReq.notes || '',
+            totalQuantity: newReq.totalQuantity || newReq.baseQuantity || undefined,
+            isAvailable: newReq.isAvailable,
+            availabilityNotes: newReq.availabilityNotes || '',
+            status: 'pending'
+          });
+          console.log(`  ➕ Added: ${newReq.name} (${newReq.quantity} of ${newReq.totalQuantity || newReq.baseQuantity})`);
+        } else {
+          console.log(`  ⚠️ Skipped duplicate: ${newReq.name}`);
+        }
+      }
+    });
+
+    // Update tagged departments list
+    if (!event.taggedDepartments.includes(departmentName)) {
+      event.taggedDepartments.push(departmentName);
+    }
+
+    // Mark as modified for Mongoose
+    event.markModified('departmentRequirements');
+    event.markModified('taggedDepartments');
+
+    // Save the event
+    await event.save();
+
+    console.log(`✅ Added ${departmentName} with requirements to event`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Department added successfully',
+      data: event
+    });
+  } catch (error) {
+    console.error('Error adding department:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add department',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
@@ -350,7 +538,8 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
       status: { $ne: 'draft' } // Exclude draft events
     })
     .populate('createdBy', 'name email department')
-    .sort({ createdAt: -1 });
+    .sort({ createdAt: -1 })
+    .lean(); // Bypass Mongoose cache and get fresh data from MongoDB
 
     console.log(`📋 Found ${events.length} tagged events`);
 
