@@ -1205,8 +1205,9 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
-    // Check if this is a reschedule (date/time changes)
+    // Check if this is a reschedule (date/time/location changes)
     const isReschedule = (
+      (location !== undefined && location !== event.location) ||
       (startDate !== undefined && startDate !== event.startDate?.toISOString().split('T')[0]) ||
       (startTime !== undefined && startTime !== event.startTime) ||
       (endDate !== undefined && endDate !== event.endDate?.toISOString().split('T')[0]) ||
@@ -1297,13 +1298,31 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
         const oldSchedule = `${oldStartFormatted} - ${oldEndFormatted}`;
         const newSchedule = `${newStartFormatted} - ${newEndFormatted}`;
         
+        // Determine what changed
+        const locationChanged = location !== undefined && location !== event.location;
+        const dateTimeChanged = (
+          (startDate !== undefined && startDate !== event.startDate?.toISOString().split('T')[0]) ||
+          (startTime !== undefined && startTime !== event.startTime) ||
+          (endDate !== undefined && endDate !== event.endDate?.toISOString().split('T')[0]) ||
+          (endTime !== undefined && endTime !== event.endTime)
+        );
+        
+        let description = '';
+        if (locationChanged && dateTimeChanged) {
+          description = `Rescheduled event "${event.eventTitle}" from ${oldSchedule} at ${event.location} to ${newSchedule} at ${updatedEvent.location}`;
+        } else if (locationChanged) {
+          description = `Changed location for event "${event.eventTitle}" from ${event.location} to ${updatedEvent.location}`;
+        } else {
+          description = `Rescheduled event "${event.eventTitle}" from ${oldSchedule} to ${newSchedule}`;
+        }
+        
         await UserActivityLog.create({
           userId: user._id,
           username: event.requestor, // Use event's requestor name, not logged-in user
           email: user.email,
           department: event.requestorDepartment, // Use event's requestor department
           action: 'reschedule_event',
-          description: `Rescheduled event "${event.eventTitle}" from ${oldSchedule} to ${newSchedule}`,
+          description: description,
           eventId: event._id,
           eventTitle: event.eventTitle,
           details: {
