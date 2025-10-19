@@ -15,6 +15,7 @@ import departmentPermissionsRoutes from './routes/departmentPermissions.js';
 import messageRoutes from './routes/messages.js';
 import notificationRoutes from './routes/notifications.js';
 import loginLogsRoutes from './routes/loginLogs.js';
+import userActivityLogsRoutes from './routes/userActivityLogs.js';
 import { startScheduler, runCleanupNow } from './services/scheduler.js';
 
 // ES module __dirname equivalent
@@ -149,6 +150,7 @@ app.use('/api/department-permissions', departmentPermissionsRoutes);
 app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/login-logs', loginLogsRoutes);
+app.use('/api/user-activity-logs', userActivityLogsRoutes);
 
 // Health check route
 app.get('/api/health', (req, res) => {

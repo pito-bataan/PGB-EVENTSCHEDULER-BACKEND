@@ -2,6 +2,10 @@ import express, { Request, Response } from 'express';
 import Event from '../models/Event.js';
 import StatusNotification from '../models/StatusNotification.js';
 import Notification from '../models/Notification.js';
+import UserActivityLog from '../models/UserActivityLog.js';
+import ResourceAvailability from '../models/ResourceAvailability.js';
+import LocationAvailability from '../models/LocationAvailability.js';
+import Department from '../models/Department.js';
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
@@ -462,7 +466,7 @@ router.post('/:eventId/add-department', authenticateToken, async (req: Request, 
 router.patch('/:id/status', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { status } = req.body;
+    const { status, reason } = req.body;
     
     console.log(`🔄 EVENT STATUS UPDATE REQUEST: ${id} -> ${status}`);
     
@@ -474,12 +478,16 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       });
     }
     
-    // Find and update the event
-    const event = await Event.findByIdAndUpdate(
-      id,
-      { status },
-      { new: true }
-    ).populate('createdBy', 'name email department');
+    // Prepare update object
+    const updateData: any = { status };
+    
+    // Add reason if provided (for rejected or cancelled status)
+    if (reason && (status === 'rejected' || status === 'cancelled')) {
+      updateData.reason = reason;
+    }
+    
+    // Find the event first to check if it's being cancelled
+    const event = await Event.findById(id);
     
     if (!event) {
       return res.status(404).json({
@@ -488,7 +496,36 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       });
     }
     
-    console.log(`✅ Event status updated: ${event.eventTitle} -> ${status}`);
+    // If cancelling the event, reset all department requirements
+    if (status === 'cancelled') {
+      console.log(`🔄 Cancelling event: ${event.eventTitle} - Resetting all requirements`);
+      
+      // Reset all department requirements to pending
+      const departmentRequirements = event.departmentRequirements || {};
+      
+      for (const department in departmentRequirements) {
+        const requirements = departmentRequirements[department];
+        if (Array.isArray(requirements)) {
+          requirements.forEach((req: any) => {
+            req.status = 'pending';
+            req.declineReason = undefined;
+            req.notes = undefined;
+          });
+        }
+      }
+      
+      updateData.departmentRequirements = departmentRequirements;
+      console.log(`✅ Reset ${Object.keys(departmentRequirements).length} department requirements`);
+    }
+    
+    // Update the event
+    const updatedEvent = await Event.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true }
+    ).populate('createdBy', 'name email department');
+    
+    console.log(`✅ Event status updated: ${updatedEvent!.eventTitle} -> ${status}`);
     
     // Emit Socket.IO event for real-time updates
     const io = req.app.get('io');
@@ -502,13 +539,25 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       });
       
       // Broadcast to all admins
-      io.emit('event-updated', event);
+      io.emit('event-updated', updatedEvent);
+      
+      // If cancelled, notify all tagged departments about requirement reset
+      if (status === 'cancelled' && updatedEvent!.taggedDepartments) {
+        updatedEvent!.taggedDepartments.forEach((dept: string) => {
+          io.emit('status-update', {
+            eventId: updatedEvent!._id,
+            eventTitle: updatedEvent!.eventTitle,
+            department: dept,
+            message: `Event "${updatedEvent!.eventTitle}" has been cancelled. All requirements have been reset.`
+          });
+        });
+      }
     }
     
     res.status(200).json({
       success: true,
       message: `Event ${status} successfully`,
-      data: event
+      data: updatedEvent
     });
   } catch (error) {
     console.error('Error updating event status:', error);
@@ -543,10 +592,69 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
 
     console.log(`📋 Found ${events.length} tagged events`);
 
+    // Recalculate availability for each event based on current startDate
+    const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
+      const eventDate = new Date(event.startDate).toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      console.log(`🔄 Recalculating availability for event: ${event.eventTitle}, Date: ${eventDate}`);
+      
+      // Get department requirements for this event
+      const departmentRequirements = event.departmentRequirements || {};
+      
+      // Update availability for ALL departments (not just user's department)
+      for (const deptName in departmentRequirements) {
+        const requirements = departmentRequirements[deptName];
+        
+        const updatedRequirements = await Promise.all(
+          requirements.map(async (req: any) => {
+            // Find the department to get the requirement details
+            const department = await Department.findOne({ name: deptName });
+            if (!department) {
+              console.log(`⚠️ Department not found: ${deptName}`);
+              return req;
+            }
+            
+            // Find the requirement in the department
+            const deptReq = department.requirements.find((r: any) => r.text === req.name);
+            if (!deptReq) {
+              console.log(`⚠️ Requirement not found: ${req.name} in ${deptName}`);
+              return req;
+            }
+            
+            // Check if there's a custom availability for this date
+            const availability = await ResourceAvailability.findOne({
+              departmentId: department._id,
+              requirementId: deptReq._id,
+              date: eventDate
+            });
+            
+            const oldQuantity = req.totalQuantity;
+            
+            // Update totalQuantity based on availability or default
+            if (availability) {
+              req.totalQuantity = availability.quantity;
+              console.log(`✅ ${deptName} - ${req.name}: Updated from ${oldQuantity} to ${availability.quantity} (custom availability for ${eventDate})`);
+            } else if (deptReq.totalQuantity) {
+              req.totalQuantity = deptReq.totalQuantity;
+              console.log(`📋 ${deptName} - ${req.name}: Using default ${deptReq.totalQuantity} (no custom availability for ${eventDate})`);
+            }
+            
+            return req;
+          })
+        );
+        
+        departmentRequirements[deptName] = updatedRequirements;
+      }
+      
+      return {
+        ...event,
+        departmentRequirements
+      };
+    }));
+
     res.status(200).json({
       success: true,
-      count: events.length,
-      data: events
+      count: eventsWithUpdatedAvailability.length,
+      data: eventsWithUpdatedAvailability
     });
   } catch (error) {
     console.error('Error fetching tagged events:', error);
@@ -586,12 +694,74 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
     const userId = (req as any).user._id;
     const events = await Event.find({ createdBy: userId })
       .populate('createdBy', 'name email department')
-      .sort({ createdAt: -1 });
+      .sort({ createdAt: -1 })
+      .lean();
+
+    console.log(`📋 Found ${events.length} user events`);
+
+    // Recalculate availability for each event based on current startDate
+    const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
+      const eventDate = new Date(event.startDate).toISOString().split('T')[0]; // Format: YYYY-MM-DD
+      console.log(`🔄 [MY EVENTS] Recalculating availability for: ${event.eventTitle}, Date: ${eventDate}`);
+      
+      // Get department requirements for this event
+      const departmentRequirements = event.departmentRequirements || {};
+      
+      // Update availability for ALL departments
+      for (const deptName in departmentRequirements) {
+        const requirements = departmentRequirements[deptName];
+        
+        const updatedRequirements = await Promise.all(
+          requirements.map(async (req: any) => {
+            // Find the department to get the requirement details
+            const department = await Department.findOne({ name: deptName });
+            if (!department) {
+              console.log(`⚠️ [MY EVENTS] Department not found: ${deptName}`);
+              return req;
+            }
+            
+            // Find the requirement in the department
+            const deptReq = department.requirements.find((r: any) => r.text === req.name);
+            if (!deptReq) {
+              console.log(`⚠️ [MY EVENTS] Requirement not found: ${req.name} in ${deptName}`);
+              return req;
+            }
+            
+            // Check if there's a custom availability for this date
+            const availability = await ResourceAvailability.findOne({
+              departmentId: department._id,
+              requirementId: deptReq._id,
+              date: eventDate
+            });
+            
+            const oldQuantity = req.totalQuantity;
+            
+            // Update totalQuantity based on availability or default
+            if (availability) {
+              req.totalQuantity = availability.quantity;
+              console.log(`✅ [MY EVENTS] ${deptName} - ${req.name}: Updated from ${oldQuantity} to ${availability.quantity} (custom for ${eventDate})`);
+            } else if (deptReq.totalQuantity) {
+              req.totalQuantity = deptReq.totalQuantity;
+              console.log(`📋 [MY EVENTS] ${deptName} - ${req.name}: Using default ${deptReq.totalQuantity} (no custom for ${eventDate})`);
+            }
+            
+            return req;
+          })
+        );
+        
+        departmentRequirements[deptName] = updatedRequirements;
+      }
+      
+      return {
+        ...event,
+        departmentRequirements
+      };
+    }));
 
     res.status(200).json({
       success: true,
-      count: events.length,
-      data: events
+      count: eventsWithUpdatedAvailability.length,
+      data: eventsWithUpdatedAvailability
     });
   } catch (error) {
     console.error('Error fetching user events:', error);
@@ -772,6 +942,55 @@ router.post('/', authenticateToken, upload.fields([
 
     const savedEvent = await newEvent.save();
     await savedEvent.populate('createdBy', 'name email department');
+
+    // 📍 AUTO-CREATE LOCATION AVAILABILITY FOR CUSTOM LOCATIONS
+    const predefinedLocations = [
+      'Atrium', 'AVR', 'Canteen', 'Covered Court', 'Function Hall',
+      'Gymnasium', 'Lobby', 'Open Court', 'Oval', 'Parking Area',
+      'Quadrangle', 'Rooftop'
+    ];
+    
+    console.log(`🔍 Checking location: "${location}", Is predefined: ${predefinedLocations.includes(location)}`);
+    
+    if (location && !predefinedLocations.includes(location)) {
+      console.log(`📍 Custom location detected: "${location}" - Auto-creating availability`);
+      
+      try {
+        const eventDate = new Date(startDate).toISOString().split('T')[0];
+        const userDepartment = (req as any).user.department || 'Unknown';
+        
+        console.log(`📅 Event date: ${eventDate}, User department: ${userDepartment}`);
+        
+        // Check if availability already exists for this location and date
+        const existingAvailability = await LocationAvailability.findOne({
+          date: eventDate,
+          locationName: location
+        });
+        
+        console.log(`🔍 Existing availability check:`, existingAvailability ? 'Found' : 'Not found');
+        
+        if (!existingAvailability) {
+          const newLocation = await LocationAvailability.create({
+            date: eventDate,
+            locationName: location,
+            capacity: 1, // Minimum capacity (N/A)
+            description: 'Auto-created from event request',
+            status: 'available',
+            setBy: userId,
+            departmentName: userDepartment
+          });
+          console.log(`✅ Auto-created location availability:`, newLocation);
+        } else {
+          console.log(`ℹ️ Location availability already exists for "${location}" on ${eventDate}`);
+        }
+      } catch (locationError) {
+        console.error('❌ ERROR auto-creating location availability:', locationError);
+        console.error('❌ ERROR details:', locationError instanceof Error ? locationError.message : 'Unknown error');
+        // Don't fail the event creation if location availability fails
+      }
+    } else {
+      console.log(`ℹ️ Skipping auto-create - predefined location or no location`);
+    }
 
     // 🔔 REAL-TIME NOTIFICATION BROADCASTING
     console.log('🔔 Broadcasting new event notification for:', savedEvent.eventTitle);
@@ -966,7 +1185,7 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
 router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { location, startDate, startTime, endDate, endTime } = req.body;
+    const { location, startDate, startTime, endDate, endTime, departmentRequirements } = req.body;
     const userId = (req as any).user._id;
 
     // Find the event and check ownership
@@ -986,19 +1205,128 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       });
     }
 
+    // Check if this is a reschedule (date/time changes)
+    const isReschedule = (
+      (startDate !== undefined && startDate !== event.startDate?.toISOString().split('T')[0]) ||
+      (startTime !== undefined && startTime !== event.startTime) ||
+      (endDate !== undefined && endDate !== event.endDate?.toISOString().split('T')[0]) ||
+      (endTime !== undefined && endTime !== event.endTime)
+    );
+    
+    // Build update object with only provided fields
+    const updateData: any = {
+      updatedAt: new Date()
+    };
+    
+    if (location !== undefined) updateData.location = location;
+    if (startDate !== undefined) updateData.startDate = new Date(startDate);
+    if (startTime !== undefined) updateData.startTime = startTime;
+    if (endDate !== undefined) updateData.endDate = new Date(endDate);
+    if (endTime !== undefined) updateData.endTime = endTime;
+    if (departmentRequirements !== undefined) updateData.departmentRequirements = departmentRequirements;
+
     // Update the event
     const updatedEvent = await Event.findByIdAndUpdate(
       id,
-      {
-        location,
-        startDate: new Date(startDate),
-        startTime,
-        endDate: new Date(endDate),
-        endTime,
-        updatedAt: new Date()
-      },
+      updateData,
       { new: true, runValidators: true }
     );
+    
+    // 📍 AUTO-CREATE LOCATION AVAILABILITY FOR CUSTOM LOCATIONS (on update)
+    if (location !== undefined && updatedEvent) {
+      const predefinedLocations = [
+        'Atrium', 'AVR', 'Canteen', 'Covered Court', 'Function Hall',
+        'Gymnasium', 'Lobby', 'Open Court', 'Oval', 'Parking Area',
+        'Quadrangle', 'Rooftop'
+      ];
+      
+      if (!predefinedLocations.includes(location)) {
+        console.log(`📍 Custom location detected on update: "${location}" - Auto-creating availability`);
+        
+        try {
+          const eventDate = new Date(updatedEvent.startDate).toISOString().split('T')[0];
+          const userDepartment = (req as any).user.department || 'Unknown';
+          
+          // Check if availability already exists for this location and date
+          const existingAvailability = await LocationAvailability.findOne({
+            date: eventDate,
+            locationName: location
+          });
+          
+          if (!existingAvailability) {
+            await LocationAvailability.create({
+              date: eventDate,
+              locationName: location,
+              capacity: 1, // Minimum capacity (N/A)
+              description: 'Auto-created from event request',
+              status: 'available',
+              setBy: userId,
+              departmentName: userDepartment
+            });
+            console.log(`✅ Auto-created location availability for "${location}" on ${eventDate}`);
+          } else {
+            console.log(`ℹ️ Location availability already exists for "${location}" on ${eventDate}`);
+          }
+        } catch (locationError) {
+          console.error('⚠️ Error auto-creating location availability:', locationError);
+          // Don't fail the event update if location availability fails
+        }
+      }
+    }
+    
+    // Create activity log if this is a reschedule
+    if (isReschedule && updatedEvent) {
+      try {
+        const user = (req as any).user;
+        
+        // Format dates nicely (e.g., "Oct 23, 2025 8:00 AM")
+        const formatDateTime = (date: Date, time: string) => {
+          const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          const [hours, minutes] = time.split(':');
+          const hour = parseInt(hours);
+          const ampm = hour >= 12 ? 'PM' : 'AM';
+          const displayHour = hour % 12 || 12;
+          return `${dateStr} ${displayHour}:${minutes} ${ampm}`;
+        };
+        
+        const oldStartFormatted = formatDateTime(event.startDate!, event.startTime);
+        const oldEndFormatted = formatDateTime(event.endDate!, event.endTime);
+        const newStartFormatted = formatDateTime(updatedEvent.startDate!, updatedEvent.startTime);
+        const newEndFormatted = formatDateTime(updatedEvent.endDate!, updatedEvent.endTime);
+        
+        const oldSchedule = `${oldStartFormatted} - ${oldEndFormatted}`;
+        const newSchedule = `${newStartFormatted} - ${newEndFormatted}`;
+        
+        await UserActivityLog.create({
+          userId: user._id,
+          username: event.requestor, // Use event's requestor name, not logged-in user
+          email: user.email,
+          department: event.requestorDepartment, // Use event's requestor department
+          action: 'reschedule_event',
+          description: `Rescheduled event "${event.eventTitle}" from ${oldSchedule} to ${newSchedule}`,
+          eventId: event._id,
+          eventTitle: event.eventTitle,
+          details: {
+            oldStartDate: event.startDate,
+            oldStartTime: event.startTime,
+            oldEndDate: event.endDate,
+            oldEndTime: event.endTime,
+            newStartDate: updatedEvent.startDate,
+            newStartTime: updatedEvent.startTime,
+            newEndDate: updatedEvent.endDate,
+            newEndTime: updatedEvent.endTime,
+            oldLocation: event.location,
+            newLocation: updatedEvent.location
+          },
+          timestamp: new Date()
+        });
+        
+        console.log(`📝 Activity log created: ${event.requestor} rescheduled event ${event.eventTitle}`);
+      } catch (logError) {
+        console.error('Error creating activity log:', logError);
+        // Don't fail the request if logging fails
+      }
+    }
 
     res.status(200).json({
       success: true,

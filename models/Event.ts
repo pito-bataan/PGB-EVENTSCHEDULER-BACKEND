@@ -71,6 +71,7 @@ export interface IEvent extends Document {
   
   // Status & Metadata
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed';
+  reason?: string; // Rejection or cancellation reason
   submittedAt?: Date;
   createdBy: mongoose.Types.ObjectId; // Reference to User
   createdAt: Date;
@@ -214,6 +215,10 @@ const EventSchema: Schema = new Schema({
     type: String,
     enum: ['draft', 'submitted', 'approved', 'rejected', 'completed'],
     default: 'draft'
+  },
+  reason: {
+    type: String,
+    required: false
   },
   submittedAt: {
     type: Date
