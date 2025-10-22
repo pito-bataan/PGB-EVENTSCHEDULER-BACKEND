@@ -238,7 +238,7 @@ router.post('/login', async (req: Request, res: Response) => {
 // GET /api/users - Get all users (Admin only)
 router.get('/', authenticateToken, requireAdmin, async (req: Request, res: Response) => {
   try {
-    const { page = 1, limit = 10, search = '', department = '' } = req.query;
+    const { page = 1, limit = 50, search = '', department = '' } = req.query;
     
     const pageNum = parseInt(page as string);
     const limitNum = parseInt(limit as string);
