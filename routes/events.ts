@@ -484,6 +484,7 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     // Add reason if provided (for rejected or cancelled status)
     if (reason && (status === 'rejected' || status === 'cancelled')) {
       updateData.reason = reason;
+      console.log(`📝 Storing ${status} reason: "${reason}"`);
     }
     
     // Find the event first to check if it's being cancelled
