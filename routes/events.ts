@@ -530,7 +530,24 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     // Emit Socket.IO event for real-time updates
     const io = req.app.get('io');
     if (io) {
-      // Notify the event creator
+      // Get admin name for notification
+      const adminUser = (req as any).user;
+      const adminName = adminUser?.name || 'Admin';
+      
+      // Notify the event creator with new-notification event (for GlobalNotificationSystem)
+      io.to(`user-${event.createdBy}`).emit('new-notification', {
+        type: 'event_status_update',
+        eventId: event._id,
+        eventTitle: event.eventTitle,
+        eventStatus: status,
+        status: status,
+        adminName: adminName,
+        updatedBy: adminName,
+        message: `Your event "${event.eventTitle}" has been ${status} by ${adminName}`,
+        timestamp: Date.now()
+      });
+      
+      // Also emit old event for backward compatibility
       io.to(`user-${event.createdBy}`).emit('event-status-updated', {
         eventId: event._id,
         eventTitle: event.eventTitle,
