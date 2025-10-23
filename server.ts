@@ -78,6 +78,30 @@ app.use((req, res, next) => {
   next();
 });
 
+// Manual CORS headers for preflight - MUST come before cors middleware
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  
+  // Check if origin is allowed
+  if (origin && allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+    res.header('Access-Control-Allow-Credentials', 'true');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+    res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization');
+    
+    console.log('✅ Manual CORS headers set for origin:', origin);
+  }
+  
+  // Handle preflight
+  if (req.method === 'OPTIONS') {
+    console.log('✅ Handling OPTIONS preflight request');
+    return res.sendStatus(204);
+  }
+  
+  next();
+});
+
 // Middleware - CORS configuration with preflight support
 app.use(cors({
   origin: function (origin, callback) {
