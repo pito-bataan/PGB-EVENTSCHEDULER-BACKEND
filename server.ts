@@ -67,7 +67,7 @@ app.set('io', io);
 const PORT = process.env.PORT || 5000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
-// Middleware
+// Middleware - CORS configuration with preflight support
 app.use(cors({
   origin: allowedOrigins,
   credentials: true,
@@ -76,14 +76,6 @@ app.use(cors({
   exposedHeaders: ['Content-Type', 'Authorization'],
   preflightContinue: false,
   optionsSuccessStatus: 204
-}));
-
-// Handle preflight requests explicitly
-app.options('*', cors({
-  origin: allowedOrigins,
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
 }));
 
 app.use(express.json());
