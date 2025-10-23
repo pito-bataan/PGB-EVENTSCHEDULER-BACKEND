@@ -53,6 +53,6 @@ const DepartmentPermissionsSchema: Schema = new Schema({
 });
 
 // Index for efficient queries
-DepartmentPermissionsSchema.index({ department: 1 });
+// Note: 'department' field already has an index due to unique: true
 
 export default mongoose.model<IDepartmentPermissions>('DepartmentPermissions', DepartmentPermissionsSchema);

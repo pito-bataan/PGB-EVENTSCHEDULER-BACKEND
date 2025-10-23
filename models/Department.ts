@@ -80,7 +80,7 @@ const DepartmentSchema: Schema = new Schema({
 });
 
 // Index for faster queries
-DepartmentSchema.index({ name: 1 });
+// Note: 'name' field already has an index due to unique: true
 DepartmentSchema.index({ isVisible: 1 });
 
 export default mongoose.model<IDepartment>('Department', DepartmentSchema);

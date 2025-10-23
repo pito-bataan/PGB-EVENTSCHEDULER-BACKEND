@@ -13,6 +13,7 @@ export interface Requirement {
   status?: string;
   departmentNotes?: string;
   lastUpdated?: string;
+  requirementsStatus?: 'on-hold' | 'released'; // Track if requirements are on-hold or released to departments
 }
 
 export interface IGovFile {

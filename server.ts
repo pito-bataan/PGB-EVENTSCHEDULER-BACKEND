@@ -43,23 +43,17 @@ console.log('🌐 CORS allowed origins:', allowedOrigins);
 // Re-enable Socket.IO server with proper connection management
 const io = new Server(httpServer, {
   cors: {
-    origin: function (origin, callback) {
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1) {
-        callback(null, true);
-      } else {
-        console.log('❌ Socket.IO CORS blocked origin:', origin);
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
+    origin: allowedOrigins,
     methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
     credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization"]
+    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"]
   },
   // Add connection limits to prevent spam
   maxHttpBufferSize: 1e6, // 1MB
   pingTimeout: 60000,
   pingInterval: 25000,
+  // Enable transports
+  transports: ['websocket', 'polling'],
   // Limit connections per IP
   connectionStateRecovery: {
     maxDisconnectionDuration: 2 * 60 * 1000,
@@ -78,22 +72,33 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Trust proxy - required for Coolify/reverse proxy setups
 app.set('trust proxy', 1);
 
+// Log all incoming requests for debugging
+app.use((req, res, next) => {
+  console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
+  next();
+});
+
 // Middleware - CORS configuration with preflight support
 app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, Postman)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log('✅ CORS: Allowing request with no origin');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.indexOf(origin) !== -1) {
+      console.log('✅ CORS: Allowing origin:', origin);
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
+      console.log('📋 Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   exposedHeaders: ['Content-Type', 'Authorization'],
   preflightContinue: false,
   optionsSuccessStatus: 204

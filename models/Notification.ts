@@ -62,8 +62,8 @@ const NotificationSchema: Schema = new Schema({
 });
 
 // Indexes for efficient queries
+// Note: 'id' field already has an index due to unique: true
 NotificationSchema.index({ userId: 1, createdAt: -1 });
 NotificationSchema.index({ eventId: 1 });
-NotificationSchema.index({ id: 1 });
 
 export default mongoose.model<INotification>('Notification', NotificationSchema);

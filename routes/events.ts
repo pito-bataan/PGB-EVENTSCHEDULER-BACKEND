@@ -497,6 +497,26 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       });
     }
     
+    // If approving the event, RELEASE requirements to departments
+    if (status === 'approved') {
+      console.log(`✅ Approving event: ${event.eventTitle} - Releasing requirements to departments`);
+      
+      // Release all department requirements (change from on-hold to released)
+      const departmentRequirements = event.departmentRequirements || {};
+      
+      for (const department in departmentRequirements) {
+        const requirements = departmentRequirements[department];
+        if (Array.isArray(requirements)) {
+          requirements.forEach((req: any) => {
+            req.requirementsStatus = 'released'; // Release requirements to departments
+          });
+        }
+      }
+      
+      updateData.departmentRequirements = departmentRequirements;
+      console.log(`✅ Released requirements to ${Object.keys(departmentRequirements).length} departments`);
+    }
+    
     // If cancelling the event, reset all department requirements
     if (status === 'cancelled') {
       console.log(`🔄 Cancelling event: ${event.eventTitle} - Resetting all requirements`);
@@ -559,6 +579,20 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       // Broadcast to all admins
       io.emit('event-updated', updatedEvent);
       
+      // If approved, notify all tagged departments that requirements are now released
+      if (status === 'approved' && updatedEvent!.taggedDepartments) {
+        console.log(`📢 Notifying ${updatedEvent!.taggedDepartments.length} departments about released requirements`);
+        updatedEvent!.taggedDepartments.forEach((dept: string) => {
+          io.emit('status-update', {
+            eventId: updatedEvent!._id,
+            eventTitle: updatedEvent!.eventTitle,
+            department: dept,
+            status: 'approved',
+            message: `Event "${updatedEvent!.eventTitle}" has been approved. Requirements are now available for your department.`
+          });
+        });
+      }
+      
       // If cancelled, notify all tagged departments about requirement reset
       if (status === 'cancelled' && updatedEvent!.taggedDepartments) {
         updatedEvent!.taggedDepartments.forEach((dept: string) => {
@@ -587,6 +621,162 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
   }
 });
 
+// PATCH /api/events/:id/details - Update event details (for on-hold/submitted events)
+router.patch('/:id/details', authenticateToken, upload.fields([
+  { name: 'attachments', maxCount: 10 },
+  { name: 'brieferTemplate', maxCount: 1 },
+  { name: 'availableForDL', maxCount: 1 },
+  { name: 'programme', maxCount: 1 }
+]), async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { eventTitle, requestor, participants, vip, vvip, contactNumber, contactEmail, description } = req.body;
+    const files = req.files as { [fieldname: string]: Express.Multer.File[] };
+    
+    console.log(`📝 EVENT DETAILS UPDATE REQUEST: ${id}`);
+    
+    // Find the event
+    const event = await Event.findById(id);
+    
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+    
+    // Check if user owns this event
+    const userId = (req as any).user._id;
+    if (event.createdBy.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only edit your own events'
+      });
+    }
+    
+    // Only allow editing if event is submitted (on-hold)
+    if (event.status !== 'submitted') {
+      return res.status(400).json({
+        success: false,
+        message: 'You can only edit details of submitted events (before admin approval)'
+      });
+    }
+    
+    // Validate required fields
+    if (!eventTitle || !requestor || !contactEmail || !contactNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Event title, requestor, contact email, and contact number are required'
+      });
+    }
+    
+    if (participants < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Participants must be at least 1'
+      });
+    }
+    
+    // Update the event details
+    const updateData: any = {
+      eventTitle,
+      requestor,
+      participants: parseInt(participants),
+      contactNumber,
+      contactEmail
+    };
+    
+    // Optional fields
+    if (vip !== undefined) updateData.vip = parseInt(vip);
+    if (vvip !== undefined) updateData.vvip = parseInt(vvip);
+    if (description !== undefined) updateData.description = description;
+    
+    // Handle file uploads - APPEND to existing files
+    if (files) {
+      // Add new attachments to existing ones
+      if (files.attachments && files.attachments.length > 0) {
+        const newAttachments = files.attachments.map(file => ({
+          filename: file.filename,
+          originalName: file.originalname,
+          mimetype: file.mimetype,
+          size: file.size
+        }));
+        
+        // Append to existing attachments
+        updateData.attachments = [...(event.attachments || []), ...newAttachments];
+        console.log(`📎 Adding ${newAttachments.length} new attachment(s)`);
+      }
+      
+      // Handle government files - update or add
+      if (!updateData.govFiles) {
+        updateData.govFiles = event.govFiles || {};
+      }
+      
+      if (files.brieferTemplate && files.brieferTemplate[0]) {
+        updateData.govFiles.brieferTemplate = {
+          filename: files.brieferTemplate[0].filename,
+          originalName: files.brieferTemplate[0].originalname,
+          mimetype: files.brieferTemplate[0].mimetype,
+          size: files.brieferTemplate[0].size
+        };
+        console.log(`📄 Adding Briefer Template`);
+      }
+      
+      if (files.availableForDL && files.availableForDL[0]) {
+        updateData.govFiles.availableForDL = {
+          filename: files.availableForDL[0].filename,
+          originalName: files.availableForDL[0].originalname,
+          mimetype: files.availableForDL[0].mimetype,
+          size: files.availableForDL[0].size
+        };
+        console.log(`📄 Adding Available for DL`);
+      }
+      
+      if (files.programme && files.programme[0]) {
+        updateData.govFiles.programme = {
+          filename: files.programme[0].filename,
+          originalName: files.programme[0].originalname,
+          mimetype: files.programme[0].mimetype,
+          size: files.programme[0].size
+        };
+        console.log(`📄 Adding Programme`);
+      }
+    }
+    
+    const updatedEvent = await Event.findByIdAndUpdate(
+      id,
+      updateData,
+      { new: true, runValidators: true }
+    ).populate('createdBy', 'name email department');
+    
+    console.log(`✅ Event details updated: ${updatedEvent!.eventTitle}`);
+    
+    // Emit Socket.IO event to notify the user
+    const io = (req as any).io;
+    if (io) {
+      io.to(`user-${userId}`).emit('event-updated', {
+        eventId: updatedEvent!._id,
+        eventTitle: updatedEvent!.eventTitle,
+        message: `Event details updated successfully`
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Event details updated successfully',
+      data: updatedEvent
+    });
+    
+  } catch (error) {
+    console.error('Error updating event details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to update event details',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // GET /api/events/tagged - Fetch events where user's department is tagged
 router.get('/tagged', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -602,13 +792,13 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
 
     const events = await Event.find({
       taggedDepartments: userDepartment,
-      status: { $ne: 'draft' } // Exclude draft events
+      status: 'approved' // ONLY show approved events (requirements are released)
     })
     .populate('createdBy', 'name email department')
     .sort({ createdAt: -1 })
     .lean(); // Bypass Mongoose cache and get fresh data from MongoDB
 
-    console.log(`📋 Found ${events.length} tagged events`);
+    console.log(`📋 Found ${events.length} APPROVED tagged events`);
 
     // Recalculate availability for each event based on current startDate
     const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
@@ -1010,54 +1200,10 @@ router.post('/', authenticateToken, upload.fields([
       console.log(`ℹ️ Skipping auto-create - predefined location or no location`);
     }
 
-    // 🔔 REAL-TIME NOTIFICATION BROADCASTING
-    console.log('🔔 Broadcasting new event notification for:', savedEvent.eventTitle);
-    
-    // Get Socket.IO instance
-    const io = req.app.get('io');
-    if (io) {
-      // Determine who should receive notifications
-      const targetUsers = new Set<string>();
-      
-      // 1. Add requestor (event creator) for their own upcoming event notifications
-      if (userId) {
-        targetUsers.add(userId.toString());
-        console.log(`📤 Adding requestor ${userId} to notification targets`);
-      }
-      
-      // 2. Add users from tagged departments for tagged notifications
-      const taggedDepts = savedEvent.taggedDepartments || [];
-      console.log(`🏢 Tagged departments:`, taggedDepts);
-      
-      // For now, we'll broadcast to all connected users in tagged departments
-      // In a real system, you'd query users by department from the database
-      
-      // Broadcast new notification event to all relevant users
-      targetUsers.forEach(targetUserId => {
-        io.to(`user-${targetUserId}`).emit('new-notification', {
-          eventId: savedEvent._id,
-          eventTitle: savedEvent.eventTitle,
-          notificationType: 'upcoming',
-          timestamp: new Date(),
-          message: `New event "${savedEvent.eventTitle}" has been created`
-        });
-        console.log(`🔔 Sent new-notification to user-${targetUserId}`);
-      });
-      
-      // Also broadcast to all connected clients (for tagged department users)
-      io.emit('new-notification', {
-        eventId: savedEvent._id,
-        eventTitle: savedEvent.eventTitle,
-        notificationType: 'tagged',
-        timestamp: new Date(),
-        taggedDepartments: taggedDepts,
-        message: `New event "${savedEvent.eventTitle}" has tagged your department`
-      });
-      
-      console.log(`🔄 Broadcasted new-notification event to all clients for event: ${savedEvent.eventTitle}`);
-    } else {
-      console.log('⚠️ Socket.IO not available for broadcasting');
-    }
+    // 🔔 NOTIFICATION DISABLED ON SUBMISSION
+    // Notifications will only be sent when admin APPROVES the event
+    // This ensures departments only get notified when requirements are released
+    console.log('ℹ️ Event submitted with status "submitted" - notifications will be sent after admin approval');
 
     res.status(201).json({
       success: true,
