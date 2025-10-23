@@ -7,6 +7,39 @@ import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 
+// Get all notifications for a specific user
+router.get('/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const requestingUserId = req.user?.id;
+    
+    // Users can only fetch their own notifications
+    if (userId !== requestingUserId) {
+      return res.status(403).json({ success: false, message: 'Unauthorized' });
+    }
+    
+    console.log(`📋 Fetching notifications for user: ${userId}`);
+    
+    // Get all notifications for this user from the Notification collection
+    const notifications = await Notification.find({ userId })
+      .sort({ createdAt: -1 })
+      .limit(50); // Limit to last 50 notifications
+    
+    console.log(`📋 Found ${notifications.length} notifications`);
+    
+    res.json({
+      success: true,
+      data: notifications
+    });
+  } catch (error) {
+    console.error('Error fetching user notifications:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch notifications'
+    });
+  }
+});
+
 // Get read notifications for current user
 router.get('/read-status', authenticateToken, async (req, res) => {
   try {

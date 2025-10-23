@@ -6,6 +6,7 @@ import UserActivityLog from '../models/UserActivityLog.js';
 import ResourceAvailability from '../models/ResourceAvailability.js';
 import LocationAvailability from '../models/LocationAvailability.js';
 import Department from '../models/Department.js';
+import User from '../models/User.js';
 import { authenticateToken } from '../middleware/auth.js';
 import multer from 'multer';
 import path from 'path';
@@ -582,6 +583,18 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       // If approved, notify all tagged departments that requirements are now released
       if (status === 'approved' && updatedEvent!.taggedDepartments) {
         console.log(`📢 Notifying ${updatedEvent!.taggedDepartments.length} departments about released requirements`);
+        
+        // Emit to all users (for real-time dashboard updates)
+        io.emit('new-notification', {
+          type: 'event_approved',
+          eventId: updatedEvent!._id,
+          eventTitle: updatedEvent!.eventTitle,
+          status: 'approved',
+          message: `Event "${updatedEvent!.eventTitle}" has been approved`,
+          timestamp: Date.now()
+        });
+        
+        // Also emit status-update for backward compatibility
         updatedEvent!.taggedDepartments.forEach((dept: string) => {
           io.emit('status-update', {
             eventId: updatedEvent!._id,
@@ -1043,7 +1056,8 @@ router.post('/', authenticateToken, upload.fields([
       contactEmail,
       taggedDepartments,
       departmentRequirements,
-      noAttachments
+      noAttachments,
+      eventType
     } = req.body;
 
     // Validate required fields
@@ -1143,6 +1157,7 @@ router.post('/', authenticateToken, upload.fields([
       govFiles,
       taggedDepartments: taggedDepartments ? JSON.parse(taggedDepartments) : [],
       departmentRequirements: departmentRequirements ? JSON.parse(departmentRequirements) : {},
+      eventType: eventType || 'simple',
       status: 'submitted',
       submittedAt: new Date(),
       createdBy: userId

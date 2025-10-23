@@ -44,6 +44,7 @@ export interface IEvent extends Document {
   withoutGov: boolean;
   multipleLocations: boolean;
   description?: string;
+  eventType: 'simple' | 'complex';
   
   // Schedule Information
   startDate: Date;
@@ -148,6 +149,11 @@ const EventSchema: Schema = new Schema({
     type: String,
     trim: true,
     maxlength: [5000, 'Description cannot exceed 5000 characters']
+  },
+  eventType: {
+    type: String,
+    enum: ['simple', 'complex'],
+    default: 'simple'
   },
   
   // Schedule Information
