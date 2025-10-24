@@ -1029,12 +1029,21 @@ router.post('/', authenticateToken, upload.fields([
   { name: 'programme', maxCount: 1 }
 ]), async (req: Request, res: Response) => {
   try {
+    console.log('📥 [EVENT SUBMISSION] Request received from user');
+    
     const userId = (req as any).user._id;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
     
     console.log('🔍 POST /api/events - User ID:', userId);
     console.log('📋 User object:', (req as any).user);
     console.log('🏢 Requestor Department from form:', req.body.requestorDepartment);
+    
+    // Log file upload details
+    if (files) {
+      const totalFiles = Object.values(files).flat().length;
+      const totalSize = Object.values(files).flat().reduce((sum, file) => sum + file.size, 0);
+      console.log(`📎 Files uploaded: ${totalFiles} files, Total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`);
+    }
     
     // Parse form data
     const {
