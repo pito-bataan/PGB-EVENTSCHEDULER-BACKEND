@@ -1344,11 +1344,17 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
     const { download } = req.query;
     const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
     
+    console.log('📂 [FILE] Attempting to serve attachment:', filename);
+    console.log('📂 [FILE] Full path:', filePath);
+    console.log('📂 [FILE] File exists:', fs.existsSync(filePath));
+    
     // Check if file exists
     if (!fs.existsSync(filePath)) {
+      console.log('❌ [FILE] File not found at path:', filePath);
       return res.status(404).json({
         success: false,
-        message: 'File not found'
+        message: 'File not found',
+        requestedPath: filePath
       });
     }
     
@@ -1557,11 +1563,17 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
     const { download } = req.query;
     const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
     
+    console.log(' [GOVFILE] Attempting to serve government file:', filename);
+    console.log(' [GOVFILE] Full path:', filePath);
+    console.log(' [GOVFILE] File exists:', fs.existsSync(filePath));
+    
     // Check if file exists
     if (!fs.existsSync(filePath)) {
+      console.log(' [GOVFILE] File not found at path:', filePath);
       return res.status(404).json({
         success: false,
-        message: 'Government file not found'
+        message: 'Government file not found',
+        requestedPath: filePath
       });
     }
     
