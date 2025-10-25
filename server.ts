@@ -72,11 +72,11 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Trust proxy - required for Coolify/reverse proxy setups
 app.set('trust proxy', 1);
 
-// Log all incoming requests for debugging
-app.use((req, res, next) => {
-  console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
-  next();
-});
+// Log all incoming requests for debugging (disabled for production - too verbose)
+// app.use((req, res, next) => {
+//   console.log(`📨 ${req.method} ${req.path} - Origin: ${req.headers.origin || 'no-origin'}`);
+//   next();
+// });
 
 // Manual CORS headers for preflight - MUST come before cors middleware
 app.use((req, res, next) => {
@@ -90,12 +90,14 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization');
     
-    console.log('✅ Manual CORS headers set for origin:', origin);
+    // Disabled verbose logging
+    // console.log('✅ Manual CORS headers set for origin:', origin);
   }
   
   // Handle preflight
   if (req.method === 'OPTIONS') {
-    console.log('✅ Handling OPTIONS preflight request');
+    // Disabled verbose logging
+    // console.log('✅ Handling OPTIONS preflight request');
     return res.sendStatus(204);
   }
   
@@ -107,12 +109,14 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) {
-      console.log('✅ CORS: Allowing request with no origin');
+      // Disabled verbose logging
+      // console.log('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
     
     if (allowedOrigins.indexOf(origin) !== -1) {
-      console.log('✅ CORS: Allowing origin:', origin);
+      // Disabled verbose logging
+      // console.log('✅ CORS: Allowing origin:', origin);
       callback(null, true);
     } else {
       console.log('❌ CORS blocked origin:', origin);
@@ -252,8 +256,9 @@ const connectDB = async () => {
     console.log(`📊 Database: ${mongoose.connection.db?.databaseName}`);
     console.log(`🌐 Host: ${mongoose.connection.host}`);
     
-    // Start the automated scheduler
-    startScheduler();
+    // Start the automated scheduler with Socket.IO instance
+    const io = app.get('io');
+    startScheduler(io);
     
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error);

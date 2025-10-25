@@ -14,13 +14,6 @@ import fs from 'fs';
 
 const router = express.Router();
 
-// Log all requests to events endpoint
-router.use((req, res, next) => {
-  console.log(`📥 ${req.method} ${req.path} - Request received`);
-  console.log('📋 Headers:', req.headers.authorization ? 'Bearer token present' : 'No auth token');
-  next();
-});
-
 // Configure multer for file uploads
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -227,9 +220,10 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
       
       // Then try to create notifications (non-critical)
       try {
-        // Create notification in main notifications collection
+        // Create notification in main notifications collection with unique ID
         const eventIdStr = (event._id as any).toString();
-        const notificationId = `status-${eventIdStr}-${requirementId}`;
+        const timestamp = Date.now();
+        const notificationId = `status-${eventIdStr}-${requirementId}-${timestamp}`;
         const notification = new Notification({
           id: notificationId,
           title: "Status Updated",
@@ -918,12 +912,14 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
       .sort({ createdAt: -1 })
       .lean();
 
-    console.log(`📋 Found ${events.length} user events`);
+    // Disabled verbose logging
+    // console.log(`📋 Found ${events.length} user events`);
 
     // Recalculate availability for each event based on current startDate
     const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
       const eventDate = new Date(event.startDate).toISOString().split('T')[0]; // Format: YYYY-MM-DD
-      console.log(`🔄 [MY EVENTS] Recalculating availability for: ${event.eventTitle}, Date: ${eventDate}`);
+      // Disabled verbose logging
+      // console.log(`🔄 [MY EVENTS] Recalculating availability for: ${event.eventTitle}, Date: ${eventDate}`);
       
       // Get department requirements for this event
       const departmentRequirements = event.departmentRequirements || {};
@@ -937,13 +933,15 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
             // Find the department to get the requirement details
             const department = await Department.findOne({ name: deptName });
             if (!department) {
-              console.log(`⚠️ [MY EVENTS] Department not found: ${deptName}`);
+              // Disabled verbose logging
+              // console.log(`⚠️ [MY EVENTS] Department not found: ${deptName}`);
               return req;
             }
             
             // Find the requirement in the department
             const deptReq = department.requirements.find((r: any) => r.text === req.name);
             if (!deptReq) {
+              // Only log warnings for missing requirements (keep this one)
               console.log(`⚠️ [MY EVENTS] Requirement not found: ${req.name} in ${deptName}`);
               return req;
             }
@@ -960,10 +958,12 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
             // Update totalQuantity based on availability or default
             if (availability) {
               req.totalQuantity = availability.quantity;
-              console.log(`✅ [MY EVENTS] ${deptName} - ${req.name}: Updated from ${oldQuantity} to ${availability.quantity} (custom for ${eventDate})`);
+              // Disabled verbose logging
+              // console.log(`✅ [MY EVENTS] ${deptName} - ${req.name}: Updated from ${oldQuantity} to ${availability.quantity} (custom for ${eventDate})`);
             } else if (deptReq.totalQuantity) {
               req.totalQuantity = deptReq.totalQuantity;
-              console.log(`📋 [MY EVENTS] ${deptName} - ${req.name}: Using default ${deptReq.totalQuantity} (no custom for ${eventDate})`);
+              // Disabled verbose logging
+              // console.log(`📋 [MY EVENTS] ${deptName} - ${req.name}: Using default ${deptReq.totalQuantity} (no custom for ${eventDate})`);
             }
             
             return req;
@@ -1066,8 +1066,20 @@ router.post('/', authenticateToken, upload.fields([
       taggedDepartments,
       departmentRequirements,
       noAttachments,
-      eventType
+      eventType,
+      locations
     } = req.body;
+
+    // Parse locations array if it exists (for multiple conference rooms)
+    let locationsArray: string[] | undefined = undefined;
+    if (locations) {
+      try {
+        locationsArray = JSON.parse(locations);
+        console.log('📍 Parsed locations array:', locationsArray);
+      } catch (e) {
+        console.log('⚠️ Failed to parse locations:', e);
+      }
+    }
 
     // Validate required fields
     const requiredFields = {
@@ -1149,6 +1161,7 @@ router.post('/', authenticateToken, upload.fields([
       requestor,
       requestorDepartment,
       location,
+      locations: locationsArray,
       participants: parseInt(participants),
       vip: vip ? parseInt(vip) : 0,
       vvip: vvip ? parseInt(vvip) : 0,

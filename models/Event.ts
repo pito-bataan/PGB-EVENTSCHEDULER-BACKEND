@@ -38,6 +38,7 @@ export interface IEvent extends Document {
   requestor: string;
   requestorDepartment: string; // Department of the person who submitted the request
   location: string;
+  locations?: string[]; // Array of locations for multiple conference rooms
   participants: number;
   vip?: number;
   vvip?: number;
@@ -121,6 +122,10 @@ const EventSchema: Schema = new Schema({
     required: [true, 'Location is required'],
     trim: true,
     maxlength: [200, 'Location cannot exceed 200 characters']
+  },
+  locations: {
+    type: [String],
+    default: undefined
   },
   participants: {
     type: Number,

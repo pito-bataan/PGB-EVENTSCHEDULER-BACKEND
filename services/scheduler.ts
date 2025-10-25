@@ -1,9 +1,79 @@
 import cron from 'node-cron';
 import { cleanupPastLocationAvailabilities } from '../routes/locationAvailability.js';
 import { cleanupPastResourceAvailabilities } from '../routes/resourceAvailability.js';
+import Event from '../models/Event.js';
+
+// Auto-complete events that have ended
+const autoCompleteEvents = async (io: any) => {
+  try {
+    const now = new Date();
+    
+    // Find events that should be completed (ended but not yet marked as completed/cancelled)
+    const events = await Event.find({
+      status: { $nin: ['completed', 'cancelled'] }
+    });
+    
+    let completedCount = 0;
+    
+    for (const event of events) {
+      try {
+        // Parse end date and time to create a complete datetime
+        // endDate is a Date object, endTime is a string like "14:00"
+        const endDate = new Date(event.endDate);
+        const [hours, minutes] = event.endTime.split(':').map(Number);
+        
+        // Create a new date with the time set
+        const eventEndDateTime = new Date(endDate);
+        eventEndDateTime.setHours(hours, minutes, 0, 0);
+        
+        // Check if event has ended
+        if (eventEndDateTime <= now) {
+          // Update status to completed
+          event.status = 'completed';
+          await event.save();
+          
+          completedCount++;
+          
+          // Emit WebSocket event to notify all clients
+          if (io) {
+            io.emit('event-status-updated', {
+              eventId: event._id,
+              eventTitle: event.eventTitle,
+              status: 'completed',
+              autoCompleted: true,
+              completedAt: now.toISOString()
+            });
+            
+            // Also emit general event update
+            io.emit('event-updated', {
+              eventId: event._id,
+              eventTitle: event.eventTitle,
+              action: 'auto-completed'
+            });
+          }
+          
+          // Only log when event is actually completed
+          console.log(`✅ Auto-completed: ${event.eventTitle}`);
+        }
+      } catch (error) {
+        console.error(`❌ Error auto-completing event ${event.eventTitle}:`, error);
+      }
+    }
+    
+    // Only log summary if events were completed
+    if (completedCount > 0) {
+      console.log(`🎉 Auto-completed ${completedCount} event(s) at ${now.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`);
+    }
+    
+    return { success: true, completedCount };
+  } catch (error) {
+    console.error('❌ Error in autoCompleteEvents:', error);
+    return { success: false, completedCount: 0, error };
+  }
+};
 
 // Schedule cleanup to run daily at midnight (00:00)
-export const startScheduler = () => {
+export const startScheduler = (io?: any) => {
   console.log('🕐 Starting automated scheduler...');
   
   // Get current time for logging
@@ -72,9 +142,18 @@ export const startScheduler = () => {
     timezone: "Asia/Manila"
   });
   
+  // Auto-complete events every minute
+  cron.schedule('* * * * *', async () => {
+    await autoCompleteEvents(io);
+  }, {
+    scheduled: true,
+    timezone: "Asia/Manila"
+  });
+  
   console.log('✅ Scheduler started successfully');
   console.log('📅 Daily cleanup scheduled for midnight (00:00) Asia/Manila');
   console.log('🕐 12-hour cleanup scheduled for 12:00 AM and 12:00 PM Asia/Manila');
+  console.log('⏰ Auto-complete events running every minute');
   console.log('🔧 Manual cleanup available at: POST /api/cleanup-now');
 };
 
