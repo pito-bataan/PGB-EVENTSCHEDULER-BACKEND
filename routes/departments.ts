@@ -256,7 +256,9 @@ router.put('/:id/requirements/:requirementId', authenticateToken, async (req: Re
     // Update requirement fields
     const requirement = department.requirements[requirementIndex];
     if (text !== undefined) requirement.text = text.trim();
-    if (type !== undefined && ['physical', 'service'].includes(type)) requirement.type = type as 'physical' | 'service';
+    if (type !== undefined && ['physical', 'service', 'yesno'].includes(type)) {
+      requirement.type = type as any; // Type will be validated by Mongoose schema
+    }
     if (totalQuantity !== undefined) requirement.totalQuantity = totalQuantity;
     if (isActive !== undefined) requirement.isActive = isActive;
     if (isAvailable !== undefined) requirement.isAvailable = isAvailable;

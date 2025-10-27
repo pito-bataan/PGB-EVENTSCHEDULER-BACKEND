@@ -3,7 +3,7 @@ import mongoose, { Document, Schema } from 'mongoose';
 export interface IRequirement {
   _id?: any;
   text: string;
-  type: 'physical' | 'service';
+  type: 'physical' | 'service' | 'yesno';
   totalQuantity?: number;
   isActive: boolean;
   isAvailable?: boolean;
@@ -28,7 +28,7 @@ const RequirementSchema: Schema = new Schema({
   },
   type: {
     type: String,
-    enum: ['physical', 'service'],
+    enum: ['physical', 'service', 'yesno'],
     required: true,
     default: 'physical'
   },

@@ -7,6 +7,7 @@ import { fileURLToPath } from 'url';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import eventRoutes from './routes/events.js';
+import eventReportsRoutes from './routes/eventReports.js';
 import userRoutes from './routes/users.js';
 import departmentRoutes from './routes/departments.js';
 import resourceAvailabilityRoutes from './routes/resourceAvailability.js';
@@ -201,6 +202,7 @@ io.on('connection', (socket) => {
 
 // Routes
 app.use('/api/events', eventRoutes);
+app.use('/api/event-reports', eventReportsRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/departments', departmentRoutes);
 app.use('/api/resource-availability', resourceAvailabilityRoutes);

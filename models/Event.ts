@@ -14,6 +14,7 @@ export interface Requirement {
   departmentNotes?: string;
   lastUpdated?: string;
   requirementsStatus?: 'on-hold' | 'released'; // Track if requirements are on-hold or released to departments
+  yesNoAnswer?: 'yes' | 'no'; // For yesno type requirements
 }
 
 export interface IGovFile {
@@ -30,6 +31,16 @@ export interface IAttachment {
   mimetype: string;
   size: number;
   uploadedAt: Date;
+}
+
+export interface IEventReport {
+  uploaded: boolean;
+  filename?: string;
+  originalName?: string;
+  mimetype?: string;
+  size?: number;
+  uploadedAt?: Date;
+  fileUrl?: string;
 }
 
 export interface IEvent extends Document {
@@ -79,6 +90,14 @@ export interface IEvent extends Document {
   createdBy: mongoose.Types.ObjectId; // Reference to User
   createdAt: Date;
   updatedAt: Date;
+  
+  // Event Reports (uploaded after event completion)
+  eventReports?: {
+    completionReport?: IEventReport;
+    postActivityReport?: IEventReport;
+    assessmentReport?: IEventReport;
+    feedbackForm?: IEventReport;
+  };
 }
 
 const GovFileSchema: Schema = new Schema({
@@ -95,6 +114,16 @@ const AttachmentSchema: Schema = new Schema({
   mimetype: { type: String, required: true },
   size: { type: Number, required: true },
   uploadedAt: { type: Date, default: Date.now }
+});
+
+const EventReportSchema: Schema = new Schema({
+  uploaded: { type: Boolean, default: false },
+  filename: { type: String },
+  originalName: { type: String },
+  mimetype: { type: String },
+  size: { type: Number },
+  uploadedAt: { type: Date },
+  fileUrl: { type: String }
 });
 
 const EventSchema: Schema = new Schema({
@@ -239,6 +268,14 @@ const EventSchema: Schema = new Schema({
     type: Schema.Types.ObjectId,
     ref: 'User',
     required: [true, 'Creator is required']
+  },
+  
+  // Event Reports (uploaded after event completion)
+  eventReports: {
+    completionReport: EventReportSchema,
+    postActivityReport: EventReportSchema,
+    assessmentReport: EventReportSchema,
+    feedbackForm: EventReportSchema
   }
 }, {
   timestamps: true
