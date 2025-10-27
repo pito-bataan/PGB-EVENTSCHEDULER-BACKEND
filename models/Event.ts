@@ -98,6 +98,9 @@ export interface IEvent extends Document {
     assessmentReport?: IEventReport;
     feedbackForm?: IEventReport;
   };
+  
+  // Reports Status (pending or completed)
+  reportsStatus?: 'pending' | 'completed';
 }
 
 const GovFileSchema: Schema = new Schema({
@@ -276,6 +279,13 @@ const EventSchema: Schema = new Schema({
     postActivityReport: EventReportSchema,
     assessmentReport: EventReportSchema,
     feedbackForm: EventReportSchema
+  },
+  
+  // Reports Status (pending or completed)
+  reportsStatus: {
+    type: String,
+    enum: ['pending', 'completed'],
+    default: 'pending'
   }
 }, {
   timestamps: true

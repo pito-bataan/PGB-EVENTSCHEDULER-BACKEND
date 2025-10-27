@@ -117,6 +117,21 @@ router.post('/:eventId/upload', authenticateToken, upload.fields([
       });
     }
 
+    // Check if all reports are now uploaded
+    const allReportsUploaded = 
+      event.eventReports.completionReport?.uploaded &&
+      event.eventReports.postActivityReport?.uploaded &&
+      event.eventReports.assessmentReport?.uploaded &&
+      event.eventReports.feedbackForm?.uploaded;
+
+    // Update reportsStatus to 'completed' if all reports are uploaded
+    if (allReportsUploaded) {
+      event.reportsStatus = 'completed';
+      console.log('🎉 [EVENT REPORTS] All reports uploaded! Status changed to completed');
+    } else {
+      event.reportsStatus = 'pending';
+    }
+
     // Mark the eventReports field as modified for Mongoose
     event.markModified('eventReports');
 
@@ -130,7 +145,8 @@ router.post('/:eventId/upload', authenticateToken, upload.fields([
       message: `Successfully uploaded ${uploadedReports.length} report(s)`,
       data: {
         uploadedReports,
-        eventReports: event.eventReports
+        eventReports: event.eventReports,
+        reportsStatus: event.reportsStatus
       }
     });
 
@@ -178,6 +194,104 @@ router.get('/:eventId', authenticateToken, async (req: Request, res: Response) =
     res.status(500).json({
       success: false,
       message: 'Failed to fetch event reports',
+      error: error.message
+    });
+  }
+});
+
+// DELETE /api/event-reports/:eventId/:reportType - Delete a specific report
+router.delete('/:eventId/:reportType', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, reportType } = req.params;
+    const userId = (req as any).user._id.toString();
+
+    console.log(`🗑️ [EVENT REPORTS] Delete request for ${reportType} on event ${eventId} by user ${userId}`);
+
+    // Find the event
+    const event = await Event.findById(eventId);
+
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user is the event creator or requestor
+    const isCreator = event.createdBy?.toString() === userId;
+    const isRequestor = event.requestor?.toString() === userId;
+    
+    if (!isCreator && !isRequestor) {
+      console.log(`❌ [EVENT REPORTS] Authorization failed - User ${userId} is not creator or requestor`);
+      console.log(`Event createdBy: ${event.createdBy}, requestor: ${event.requestor}`);
+      return res.status(403).json({
+        success: false,
+        message: 'You are not authorized to delete reports for this event'
+      });
+    }
+
+    // Validate report type
+    const validReportTypes = ['completionReport', 'postActivityReport', 'assessmentReport', 'feedbackForm'];
+    if (!validReportTypes.includes(reportType)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid report type'
+      });
+    }
+
+    // Get the file path before deleting
+    const report = (event.eventReports as any)?.[reportType];
+    if (report?.fileUrl) {
+      const filePath = path.join(process.cwd(), report.fileUrl);
+      
+      // Delete the file from filesystem
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+        console.log(`🗑️ [EVENT REPORTS] Deleted file: ${filePath}`);
+      }
+    }
+
+    // Remove the report from the database
+    if (!event.eventReports) {
+      event.eventReports = {};
+    }
+    (event.eventReports as any)[reportType] = {
+      uploaded: false,
+      uploadedAt: undefined,
+      fileUrl: undefined
+    };
+
+    // Update reportsStatus
+    const allReportsUploaded = 
+      event.eventReports.completionReport?.uploaded &&
+      event.eventReports.postActivityReport?.uploaded &&
+      event.eventReports.assessmentReport?.uploaded &&
+      event.eventReports.feedbackForm?.uploaded;
+
+    event.reportsStatus = allReportsUploaded ? 'completed' : 'pending';
+
+    // Mark the eventReports field as modified for Mongoose
+    event.markModified('eventReports');
+
+    // Save the updated event
+    await event.save();
+
+    console.log(`✅ [EVENT REPORTS] Successfully deleted ${reportType} for event ${eventId}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Report deleted successfully',
+      data: {
+        eventReports: event.eventReports,
+        reportsStatus: event.reportsStatus
+      }
+    });
+
+  } catch (error: any) {
+    console.error('❌ [EVENT REPORTS] Delete error:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete event report',
       error: error.message
     });
   }
