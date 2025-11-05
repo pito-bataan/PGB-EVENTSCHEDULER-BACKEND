@@ -63,6 +63,12 @@ export interface IEvent extends Document {
   startTime: string;
   endDate: Date;
   endTime: string;
+  dateTimeSlots?: Array<{
+    startDate: Date;
+    startTime: string;
+    endDate: Date;
+    endTime: string;
+  }>; // Additional date/time slots for multi-day events
   
   // Contact Information
   contactNumber: string;
@@ -211,6 +217,15 @@ const EventSchema: Schema = new Schema({
     type: String,
     required: [true, 'End time is required'],
     match: [/^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/, 'Invalid time format (HH:MM)']
+  },
+  dateTimeSlots: {
+    type: [{
+      startDate: { type: Date, required: true },
+      startTime: { type: String, required: true, match: /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/ },
+      endDate: { type: Date, required: true },
+      endTime: { type: String, required: true, match: /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/ }
+    }],
+    default: undefined
   },
   
   // Contact Information

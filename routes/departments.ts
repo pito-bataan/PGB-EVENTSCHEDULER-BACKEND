@@ -152,7 +152,7 @@ router.get('/:id/requirements', authenticateToken, requireAdmin, async (req: Req
 router.post('/:id/requirements', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { text, type, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
+    const { text, type, serviceType, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
 
     if (!text || !text.trim()) {
       return res.status(400).json({
@@ -189,10 +189,13 @@ router.post('/:id/requirements', authenticateToken, async (req: Request, res: Re
     const newRequirement = {
       text: text.trim(),
       type,
-      totalQuantity: type === 'physical' ? (totalQuantity || 1) : undefined,
+      // Add serviceType if provided (for service types)
+      ...(serviceType && { serviceType }),
+      // Services don't have quantity - only physical items do
+      ...(type === 'physical' && { totalQuantity: totalQuantity || 1 }),
       isActive: isActive !== false,
       isAvailable: isAvailable !== false,
-      responsiblePerson: type === 'service' ? responsiblePerson : undefined,
+      responsiblePerson: responsiblePerson || undefined,
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -222,7 +225,7 @@ router.post('/:id/requirements', authenticateToken, async (req: Request, res: Re
 router.put('/:id/requirements/:requirementId', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id, requirementId } = req.params;
-    const { text, type, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
+    const { text, type, serviceType, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
 
     const department = await Department.findById(id);
 
@@ -258,8 +261,21 @@ router.put('/:id/requirements/:requirementId', authenticateToken, async (req: Re
     if (text !== undefined) requirement.text = text.trim();
     if (type !== undefined && ['physical', 'service', 'yesno'].includes(type)) {
       requirement.type = type as any; // Type will be validated by Mongoose schema
+      // Remove totalQuantity if changing to service, or set it if changing to physical
+      if (type === 'service') {
+        requirement.totalQuantity = undefined;
+      } else if (type === 'physical' && !requirement.totalQuantity) {
+        requirement.totalQuantity = 1;
+      }
     }
-    if (totalQuantity !== undefined) requirement.totalQuantity = totalQuantity;
+    // Update serviceType if provided
+    if (serviceType !== undefined) {
+      (requirement as any).serviceType = serviceType;
+    }
+    // Only update totalQuantity for physical items
+    if (totalQuantity !== undefined && requirement.type === 'physical') {
+      requirement.totalQuantity = totalQuantity;
+    }
     if (isActive !== undefined) requirement.isActive = isActive;
     if (isAvailable !== undefined) requirement.isAvailable = isAvailable;
     if (responsiblePerson !== undefined) requirement.responsiblePerson = responsiblePerson;
@@ -514,7 +530,7 @@ router.post('/sync', authenticateToken, requireAdmin, async (req: Request, res: 
 router.post('/name/:name/requirements', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { name } = req.params;
-    const { text, type, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
+    const { text, type, serviceType, totalQuantity, isActive, isAvailable, responsiblePerson } = req.body;
 
     if (!text || !text.trim()) {
       return res.status(400).json({
@@ -551,10 +567,13 @@ router.post('/name/:name/requirements', authenticateToken, async (req: Request, 
     const newRequirement = {
       text: text.trim(),
       type,
-      totalQuantity: type === 'physical' ? (totalQuantity || 1) : undefined,
+      // Add serviceType if provided (for service types)
+      ...(serviceType && { serviceType }),
+      // Services don't have quantity - only physical items do
+      ...(type === 'physical' && { totalQuantity: totalQuantity || 1 }),
       isActive: isActive !== false,
       isAvailable: isAvailable !== false,
-      responsiblePerson: type === 'service' ? responsiblePerson : undefined,
+      responsiblePerson: responsiblePerson || undefined,
       createdAt: new Date(),
       updatedAt: new Date()
     };

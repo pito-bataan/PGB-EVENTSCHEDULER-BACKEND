@@ -4,6 +4,7 @@ export interface IRequirement {
   _id?: any;
   text: string;
   type: 'physical' | 'service' | 'yesno';
+  serviceType?: 'notes' | 'yesno'; // For service types: notes or yes/no
   totalQuantity?: number;
   isActive: boolean;
   isAvailable?: boolean;
@@ -31,6 +32,11 @@ const RequirementSchema: Schema = new Schema({
     enum: ['physical', 'service', 'yesno'],
     required: true,
     default: 'physical'
+  },
+  serviceType: {
+    type: String,
+    enum: ['notes', 'yesno'],
+    required: false
   },
   totalQuantity: {
     type: Number,

@@ -1062,6 +1062,7 @@ router.post('/', authenticateToken, upload.fields([
       startTime,
       endDate,
       endTime,
+      dateTimeSlots,
       contactNumber,
       contactEmail,
       taggedDepartments,
@@ -1079,6 +1080,24 @@ router.post('/', authenticateToken, upload.fields([
         console.log('📍 Parsed locations array:', locationsArray);
       } catch (e) {
         console.log('⚠️ Failed to parse locations:', e);
+      }
+    }
+
+    // Parse dateTimeSlots array if it exists (for multi-day events)
+    let dateTimeSlotsArray: any[] | undefined = undefined;
+    if (dateTimeSlots) {
+      try {
+        const parsedSlots = JSON.parse(dateTimeSlots);
+        // Convert date strings to Date objects
+        dateTimeSlotsArray = parsedSlots.map((slot: any) => ({
+          startDate: new Date(slot.startDate),
+          startTime: slot.startTime,
+          endDate: new Date(slot.endDate),
+          endTime: slot.endTime
+        }));
+        console.log('📅 Parsed dateTimeSlots array:', dateTimeSlotsArray);
+      } catch (e) {
+        console.log('⚠️ Failed to parse dateTimeSlots:', e);
       }
     }
 
@@ -1173,6 +1192,7 @@ router.post('/', authenticateToken, upload.fields([
       startTime,
       endDate: new Date(endDate),
       endTime,
+      dateTimeSlots: dateTimeSlotsArray,
       contactNumber,
       contactEmail,
       attachments,
