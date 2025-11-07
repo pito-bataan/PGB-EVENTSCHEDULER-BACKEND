@@ -56,7 +56,7 @@ export interface IEvent extends Document {
   withoutGov: boolean;
   multipleLocations: boolean;
   description?: string;
-  eventType: 'simple' | 'complex';
+  eventType: 'simple' | 'complex' | 'simple-meeting';
   
   // Schedule Information
   startDate: Date;
@@ -195,8 +195,8 @@ const EventSchema: Schema = new Schema({
   },
   eventType: {
     type: String,
-    enum: ['simple', 'complex'],
-    default: 'simple'
+    enum: ['simple', 'complex', 'simple-meeting'],
+    default: 'simple-meeting'
   },
   
   // Schedule Information
