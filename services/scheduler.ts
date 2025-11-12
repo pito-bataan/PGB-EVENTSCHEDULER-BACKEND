@@ -51,23 +51,14 @@ const autoCompleteEvents = async (io: any) => {
               action: 'auto-completed'
             });
           }
-          
-          // Only log when event is actually completed
-          console.log(`✅ Auto-completed: ${event.eventTitle}`);
         }
       } catch (error) {
-        console.error(`❌ Error auto-completing event ${event.eventTitle}:`, error);
+        // Error auto-completing event
       }
-    }
-    
-    // Only log summary if events were completed
-    if (completedCount > 0) {
-      console.log(`🎉 Auto-completed ${completedCount} event(s) at ${now.toLocaleString('en-PH', { timeZone: 'Asia/Manila' })}`);
     }
     
     return { success: true, completedCount };
   } catch (error) {
-    console.error('❌ Error in autoCompleteEvents:', error);
     return { success: false, completedCount: 0, error };
   }
 };
@@ -75,20 +66,6 @@ const autoCompleteEvents = async (io: any) => {
 // Schedule cleanup to run daily at midnight (00:00)
 export const startScheduler = (io?: any) => {
   console.log('🕐 Starting automated scheduler...');
-  
-  // Get current time for logging
-  const now = new Date();
-  const currentTime = now.toLocaleString('en-PH', { 
-    timeZone: 'Asia/Manila',
-    year: 'numeric',
-    month: '2-digit', 
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit'
-  });
-  
-  console.log(`🕐 Current time (Asia/Manila): ${currentTime}`);
   
   // Run cleanup daily at midnight
   cron.schedule('0 0 * * *', async () => {
@@ -102,16 +79,8 @@ export const startScheduler = (io?: any) => {
       second: '2-digit'
     });
     
-    console.log(`🕐 Running scheduled cleanup at: ${scheduleTime}`);
-    console.log('🧹 Cleaning up past location availabilities...');
     const locationResult = await cleanupPastLocationAvailabilities();
-    console.log(`📍 Location cleanup result: ${JSON.stringify(locationResult)}`);
-    
-    console.log('🧹 Cleaning up past resource availabilities...');
     const resourceResult = await cleanupPastResourceAvailabilities();
-    console.log(`📦 Resource cleanup result: ${JSON.stringify(resourceResult)}`);
-    
-    console.log('✅ All cleanup tasks completed!');
   }, {
     scheduled: true,
     timezone: "Asia/Manila"
@@ -128,15 +97,8 @@ export const startScheduler = (io?: any) => {
       minute: '2-digit',
       second: '2-digit'
     });
-    console.log(`🕐 Running 12-hour cleanup at: ${cleanupTime}`);
     const locationResult = await cleanupPastLocationAvailabilities();
     const resourceResult = await cleanupPastResourceAvailabilities();
-    
-    if ((locationResult.deletedCount || 0) > 0 || (resourceResult.deletedCount || 0) > 0) {
-      console.log(`🧹 12-hour cleanup result: Deleted ${locationResult.deletedCount || 0} location records, ${resourceResult.deletedCount || 0} resource records`);
-    } else {
-      console.log(`✅ 12-hour cleanup completed: No old records to delete`);
-    }
   }, {
     scheduled: true,
     timezone: "Asia/Manila"
@@ -151,18 +113,12 @@ export const startScheduler = (io?: any) => {
   });
   
   console.log('✅ Scheduler started successfully');
-  console.log('📅 Daily cleanup scheduled for midnight (00:00) Asia/Manila');
-  console.log('🕐 12-hour cleanup scheduled for 12:00 AM and 12:00 PM Asia/Manila');
-  console.log('⏰ Auto-complete events running every minute');
-  console.log('🔧 Manual cleanup available at: POST /api/cleanup-now');
+  console.log('📅 Automated tasks: cleanup & event completion');
 };
 
 // Function to run cleanup immediately (for testing)
 export const runCleanupNow = async () => {
-  console.log('🧹 Running immediate cleanup...');
-  console.log('🧹 Cleaning up past location availabilities...');
   const locationResult = await cleanupPastLocationAvailabilities();
-  console.log('🧹 Cleaning up past resource availabilities...');
   const resourceResult = await cleanupPastResourceAvailabilities();
   
   return {

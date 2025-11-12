@@ -26,11 +26,7 @@ const __dirname = path.dirname(__filename);
 
 // Load environment variables
 const envPath = path.join(__dirname, '.env');
-console.log('🔍 Looking for .env file at:', envPath);
-const result = dotenv.config({ path: envPath, debug: true });
-console.log('📋 Environment variables loaded:', Object.keys(process.env).filter(key => 
-  ['MONGODB_URI', 'PORT', 'JWT_SECRET', 'JWT_EXPIRES_IN', 'NODE_ENV'].includes(key)
-));
+const result = dotenv.config({ path: envPath });
 
 const app = express();
 const httpServer = createServer(app);
@@ -39,8 +35,6 @@ const httpServer = createServer(app);
 const allowedOrigins = process.env.CORS_ORIGINS 
   ? process.env.CORS_ORIGINS.split(',') 
   : ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"];
-
-console.log('🌐 CORS allowed origins:', allowedOrigins);
 
 // Re-enable Socket.IO server with proper connection management
 const io = new Server(httpServer, {
@@ -62,8 +56,6 @@ const io = new Server(httpServer, {
     skipMiddlewares: true,
   }
 });
-
-console.log('🔌 Socket.IO server re-enabled with connection management');
 
 // Make Socket.IO instance available to routes
 app.set('io', io);
@@ -121,8 +113,6 @@ app.use(cors({
       // console.log('✅ CORS: Allowing origin:', origin);
       callback(null, true);
     } else {
-      console.log('❌ CORS blocked origin:', origin);
-      console.log('📋 Allowed origins:', allowedOrigins);
       callback(new Error('Not allowed by CORS'));
     }
   },
@@ -148,45 +138,36 @@ app.set('io', io);
 const connectedUsers = new Map(); // Track connected users to prevent duplicates
 
 io.on('connection', (socket) => {
-  console.log('🔌 User connected:', socket.id);
   // Join user to their personal room (for receiving messages)
   socket.on('join-user-room', (userId) => {
     // Check if user is already connected with a different socket
     if (connectedUsers.has(userId)) {
       const oldSocketId = connectedUsers.get(userId);
       if (oldSocketId !== socket.id) {
-        console.log(`🔄 User ${userId} reconnecting - updating socket ID from ${oldSocketId} to ${socket.id}`);
         // Update to new socket ID
         connectedUsers.set(userId, socket.id);
-      } else {
-        console.log(`✅ User ${userId} already in room with same socket`);
       }
     } else {
-      console.log(`👤 New user ${userId} joining room`);
       connectedUsers.set(userId, socket.id);
     }
 
     // Always join the room (in case of reconnection)
     socket.join(`user-${userId}`);
-    console.log(`✅ User ${userId} is now in room user-${userId}`);
   });
 
   // Test connection handler
   socket.on('test-connection', (data) => {
-    console.log('🧪 Test connection received:', data);
     socket.emit('test-response', { message: 'Connection test successful', timestamp: new Date() });
   });
 
   // Join conversation room with rate limiting
   socket.on('join-conversation', (conversationId) => {
     socket.join(`conversation-${conversationId}`);
-    console.log(`💬 User joined conversation: ${conversationId}`);
   });
 
   // Leave conversation room
   socket.on('leave-conversation', (conversationId) => {
     socket.leave(`conversation-${conversationId}`);
-    console.log(`👋 User left conversation: ${conversationId}`);
   });
 
   socket.on('disconnect', () => {
@@ -194,7 +175,6 @@ io.on('connection', (socket) => {
     for (const [userId, socketId] of connectedUsers.entries()) {
       if (socketId === socket.id) {
         connectedUsers.delete(userId);
-        console.log(`🔌 User disconnected and cleaned up`);
         break;
       }
     }
@@ -227,7 +207,6 @@ app.get('/api/health', (req, res) => {
 // Manual cleanup trigger route (for testing)
 app.post('/api/cleanup-now', async (req, res) => {
   try {
-    console.log('🧹 Manual cleanup triggered via API...');
     const result = await runCleanupNow();
     
     res.json({
@@ -236,7 +215,6 @@ app.post('/api/cleanup-now', async (req, res) => {
       result: result
     });
   } catch (error) {
-    console.error('❌ Manual cleanup failed:', error);
     res.status(500).json({
       success: false,
       message: 'Cleanup failed',
@@ -258,7 +236,6 @@ const connectDB = async () => {
     
     console.log('✅ MongoDB Atlas connected successfully!');
     console.log(`📊 Database: ${mongoose.connection.db?.databaseName}`);
-    console.log(`🌐 Host: ${mongoose.connection.host}`);
     
     // Start the automated scheduler with Socket.IO instance
     const io = app.get('io');
@@ -278,14 +255,10 @@ const startServer = async () => {
     httpServer.listen(PORT, () => {
       console.log('🚀 PGB Event Scheduler Backend Server Started!');
       console.log(`📡 Server running on: http://localhost:${PORT}`);
-      console.log(`🔌 Socket.IO enabled with connection management and spam prevention`);
+      console.log(`🔌 Socket.IO enabled`);
       console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
       console.log(`📅 Events API: http://localhost:${PORT}/api/events`);
       console.log(`👥 Users API: http://localhost:${PORT}/api/users`);
-      console.log(`💬 Messages API: http://localhost:${PORT}/api/messages`);
-      console.log(`🏢 Departments API: http://localhost:${PORT}/api/departments`);
-      console.log(`📦 Resource Availability API: http://localhost:${PORT}/api/resource-availability`);
-      console.log(`🗺️ Location Availability API: http://localhost:${PORT}/api/location-availability`);
       console.log('─'.repeat(50));
     });
   } catch (error) {

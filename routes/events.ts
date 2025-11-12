@@ -101,7 +101,6 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
     const savedRequirement = Object.values(event.departmentRequirements)
       .flat()
       .find(r => r.id === requirementId);
-    console.log('🔍 Saved requirement after update:', JSON.stringify(savedRequirement, null, 2));
 
     res.status(200).json({
       success: true,
@@ -109,7 +108,6 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
       data: event
     });
   } catch (error) {
-    console.error('Error updating requirement notes:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update requirement notes',
@@ -124,8 +122,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     const { eventId, requirementId } = req.params;
     const { status, declineReason } = req.body;
     const userDepartment = (req as any).user.department;
-    
-    console.log('🔄 STATUS UPDATE REQUEST received', { status, declineReason });
 
     // Find the event
     const event = await Event.findById(eventId);
@@ -161,7 +157,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         // Save decline reason if status is declined
         if (status === 'declined' && declineReason) {
           requirement.declineReason = declineReason;
-          console.log('💾 Saving decline reason:', declineReason);
         }
         
         updatedRequirement = requirement;
@@ -213,10 +208,7 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         const updatingUserId = (req as any).user.id;
         if (updatingUserId && updatingUserId.toString() !== event.createdBy.toString()) {
           io.to(`user-${updatingUserId}`).emit('status-update', statusUpdateData);
-          console.log(`🔔 Status update sent to updating user: ${updatingUserId}`);
         }
-        
-        console.log('🔄 Status update broadcasted to all relevant users');
       }
       
       // Then try to create notifications (non-critical)
@@ -238,7 +230,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         });
 
         await notification.save();
-        console.log('📝 Status notification created in main notifications collection');
 
         // Keep the old StatusNotification for backward compatibility (optional)
         const statusNotification = new StatusNotification({
@@ -254,9 +245,7 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
         });
 
         await statusNotification.save();
-        console.log('📝 Legacy status notification also created');
       } catch (notificationError) {
-        console.error('Error creating status notification:', notificationError);
         // Don't fail the main request if notification creation fails
       }
     }
@@ -265,7 +254,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
     const savedRequirement = Object.values(event.departmentRequirements)
       .flat()
       .find((r: any) => r.id === requirementId);
-    console.log('✅ Requirement status updated successfully');
 
     res.status(200).json({
       success: true,
@@ -273,7 +261,6 @@ router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, 
       data: event
     });
   } catch (error) {
-    console.error('Error updating requirement status:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update event status',
@@ -288,8 +275,6 @@ router.patch('/:eventId/requirements/:requirementId/departments', authenticateTo
     const { eventId, requirementId } = req.params;
     const { departments } = req.body;
     
-    console.log('🔄 DEPARTMENT CHANGE REQUEST:', { eventId, requirementId, departments });
-
     if (!Array.isArray(departments) || departments.length === 0) {
       return res.status(400).json({
         success: false,
@@ -350,15 +335,12 @@ router.patch('/:eventId/requirements/:requirementId/departments', authenticateTo
     // Save the event
     await event.save();
 
-    console.log(`✅ Requirement moved from ${oldDepartment} to ${departments.join(', ')}`);
-
     res.status(200).json({
       success: true,
       message: 'Department tags updated successfully',
       data: event
     });
   } catch (error) {
-    console.error('Error updating department tags:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update department tags',
@@ -372,8 +354,6 @@ router.post('/:eventId/add-department', authenticateToken, async (req: Request, 
   try {
     const { eventId } = req.params;
     const { departmentName, requirements } = req.body;
-    
-    console.log('➕ ADD DEPARTMENT REQUEST:', { eventId, departmentName, requirementsCount: requirements?.length });
 
     if (!departmentName || !Array.isArray(requirements) || requirements.length === 0) {
       return res.status(400).json({
@@ -422,9 +402,6 @@ router.post('/:eventId/add-department', authenticateToken, async (req: Request, 
             availabilityNotes: newReq.availabilityNotes || '',
             status: 'pending'
           });
-          console.log(`  ➕ Added: ${newReq.name} (${newReq.quantity} of ${newReq.totalQuantity || newReq.baseQuantity})`);
-        } else {
-          console.log(`  ⚠️ Skipped duplicate: ${newReq.name}`);
         }
       }
     });
@@ -441,15 +418,12 @@ router.post('/:eventId/add-department', authenticateToken, async (req: Request, 
     // Save the event
     await event.save();
 
-    console.log(`✅ Added ${departmentName} with requirements to event`);
-
     res.status(200).json({
       success: true,
       message: 'Department added successfully',
       data: event
     });
   } catch (error) {
-    console.error('Error adding department:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to add department',
@@ -463,8 +437,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
   try {
     const { id } = req.params;
     const { status, reason } = req.body;
-    
-    console.log(`🔄 EVENT STATUS UPDATE REQUEST: ${id} -> ${status}`);
     
     // Validate status
     if (!['approved', 'rejected', 'submitted', 'cancelled'].includes(status)) {
@@ -480,7 +452,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     // Add reason if provided (for rejected or cancelled status)
     if (reason && (status === 'rejected' || status === 'cancelled')) {
       updateData.reason = reason;
-      console.log(`📝 Storing ${status} reason: "${reason}"`);
     }
     
     // Find the event first to check if it's being cancelled
@@ -495,8 +466,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
     
     // If approving the event, RELEASE requirements to departments
     if (status === 'approved') {
-      console.log(`✅ Approving event: ${event.eventTitle} - Releasing requirements to departments`);
-      
       // Release all department requirements (change from on-hold to released)
       const departmentRequirements = event.departmentRequirements || {};
       
@@ -510,13 +479,10 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       }
       
       updateData.departmentRequirements = departmentRequirements;
-      console.log(`✅ Released requirements to ${Object.keys(departmentRequirements).length} departments`);
     }
     
     // If cancelling the event, reset all department requirements
     if (status === 'cancelled') {
-      console.log(`🔄 Cancelling event: ${event.eventTitle} - Resetting all requirements`);
-      
       // Reset all department requirements to pending
       const departmentRequirements = event.departmentRequirements || {};
       
@@ -532,7 +498,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       }
       
       updateData.departmentRequirements = departmentRequirements;
-      console.log(`✅ Reset ${Object.keys(departmentRequirements).length} department requirements`);
     }
     
     // Update the event
@@ -541,8 +506,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       updateData,
       { new: true }
     ).populate('createdBy', 'name email department');
-    
-    console.log(`✅ Event status updated: ${updatedEvent!.eventTitle} -> ${status}`);
     
     // Emit Socket.IO event for real-time updates
     const io = req.app.get('io');
@@ -577,8 +540,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       
       // If approved, notify all tagged departments that requirements are now released
       if (status === 'approved' && updatedEvent!.taggedDepartments) {
-        console.log(`📢 Notifying ${updatedEvent!.taggedDepartments.length} departments about released requirements`);
-        
         // Emit to all users (for real-time dashboard updates)
         io.emit('new-notification', {
           type: 'event_approved',
@@ -620,7 +581,6 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       data: updatedEvent
     });
   } catch (error) {
-    console.error('Error updating event status:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update event status',
@@ -640,8 +600,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
     const { id } = req.params;
     const { eventTitle, requestor, participants, vip, vvip, contactNumber, contactEmail, description } = req.body;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    
-    console.log(`📝 EVENT DETAILS UPDATE REQUEST: ${id}`);
     
     // Find the event
     const event = await Event.findById(id);
@@ -712,7 +670,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
         
         // Append to existing attachments
         updateData.attachments = [...(event.attachments || []), ...newAttachments];
-        console.log(`📎 Adding ${newAttachments.length} new attachment(s)`);
       }
       
       // Handle government files - update or add
@@ -727,7 +684,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
           mimetype: files.brieferTemplate[0].mimetype,
           size: files.brieferTemplate[0].size
         };
-        console.log(`📄 Adding Briefer Template`);
       }
       
       if (files.availableForDL && files.availableForDL[0]) {
@@ -737,7 +693,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
           mimetype: files.availableForDL[0].mimetype,
           size: files.availableForDL[0].size
         };
-        console.log(`📄 Adding Available for DL`);
       }
       
       if (files.programme && files.programme[0]) {
@@ -747,7 +702,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
           mimetype: files.programme[0].mimetype,
           size: files.programme[0].size
         };
-        console.log(`📄 Adding Programme`);
       }
     }
     
@@ -756,8 +710,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
       updateData,
       { new: true, runValidators: true }
     ).populate('createdBy', 'name email department');
-    
-    console.log(`✅ Event details updated: ${updatedEvent!.eventTitle}`);
     
     // Emit Socket.IO event to notify the user
     const io = (req as any).io;
@@ -776,7 +728,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
     });
     
   } catch (error) {
-    console.error('Error updating event details:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update event details',
@@ -789,7 +740,6 @@ router.patch('/:id/details', authenticateToken, upload.fields([
 router.get('/tagged', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userDepartment = (req as any).user.department;
-    console.log('📥 GET /tagged - Request received');
 
     if (!userDepartment) {
       return res.status(400).json({
@@ -806,12 +756,9 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
     .sort({ createdAt: -1 })
     .lean(); // Bypass Mongoose cache and get fresh data from MongoDB
 
-    console.log(`📋 Found ${events.length} APPROVED tagged events`);
-
     // Recalculate availability for each event based on current startDate
     const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
       const eventDate = new Date(event.startDate).toISOString().split('T')[0]; // Format: YYYY-MM-DD
-      console.log(`🔄 Recalculating availability for event: ${event.eventTitle}, Date: ${eventDate}`);
       
       // Get department requirements for this event
       const departmentRequirements = event.departmentRequirements || {};
@@ -825,14 +772,12 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
             // Find the department to get the requirement details
             const department = await Department.findOne({ name: deptName });
             if (!department) {
-              console.log(`⚠️ Department not found: ${deptName}`);
               return req;
             }
             
             // Find the requirement in the department
             const deptReq = department.requirements.find((r: any) => r.text === req.name);
             if (!deptReq) {
-              console.log(`⚠️ Requirement not found: ${req.name} in ${deptName}`);
               return req;
             }
             
@@ -848,10 +793,8 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
             // Update totalQuantity based on availability or default
             if (availability) {
               req.totalQuantity = availability.quantity;
-              console.log(`✅ ${deptName} - ${req.name}: Updated from ${oldQuantity} to ${availability.quantity} (custom availability for ${eventDate})`);
             } else if (deptReq.totalQuantity) {
               req.totalQuantity = deptReq.totalQuantity;
-              console.log(`📋 ${deptName} - ${req.name}: Using default ${deptReq.totalQuantity} (no custom availability for ${eventDate})`);
             }
             
             return req;
@@ -873,7 +816,6 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
       data: eventsWithUpdatedAvailability
     });
   } catch (error) {
-    console.error('Error fetching tagged events:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch tagged events',
@@ -895,7 +837,6 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
       data: events
     });
   } catch (error) {
-    console.error('Error fetching events:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch events',
@@ -942,8 +883,6 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
             // Find the requirement in the department
             const deptReq = department.requirements.find((r: any) => r.text === req.name);
             if (!deptReq) {
-              // Only log warnings for missing requirements (keep this one)
-              console.log(`⚠️ [MY EVENTS] Requirement not found: ${req.name} in ${deptName}`);
               return req;
             }
             
@@ -986,7 +925,6 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
       data: eventsWithUpdatedAvailability
     });
   } catch (error) {
-    console.error('Error fetching user events:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch events',
@@ -1013,7 +951,6 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
       data: event
     });
   } catch (error) {
-    console.error('Error fetching event:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch event',
@@ -1030,21 +967,8 @@ router.post('/', authenticateToken, upload.fields([
   { name: 'programme', maxCount: 1 }
 ]), async (req: Request, res: Response) => {
   try {
-    console.log('📥 [EVENT SUBMISSION] Request received from user');
-    
     const userId = (req as any).user._id;
     const files = req.files as { [fieldname: string]: Express.Multer.File[] };
-    
-    console.log('🔍 POST /api/events - User ID:', userId);
-    console.log('📋 User object:', (req as any).user);
-    console.log('🏢 Requestor Department from form:', req.body.requestorDepartment);
-    
-    // Log file upload details
-    if (files) {
-      const totalFiles = Object.values(files).flat().length;
-      const totalSize = Object.values(files).flat().reduce((sum, file) => sum + file.size, 0);
-      console.log(`📎 Files uploaded: ${totalFiles} files, Total size: ${(totalSize / 1024 / 1024).toFixed(2)}MB`);
-    }
     
     // Parse form data
     const {
@@ -1077,9 +1001,8 @@ router.post('/', authenticateToken, upload.fields([
     if (locations) {
       try {
         locationsArray = JSON.parse(locations);
-        console.log('📍 Parsed locations array:', locationsArray);
       } catch (e) {
-        console.log('⚠️ Failed to parse locations:', e);
+        // Failed to parse locations
       }
     }
 
@@ -1095,9 +1018,8 @@ router.post('/', authenticateToken, upload.fields([
           endDate: new Date(slot.endDate),
           endTime: slot.endTime
         }));
-        console.log('📅 Parsed dateTimeSlots array:', dateTimeSlotsArray);
       } catch (e) {
-        console.log('⚠️ Failed to parse dateTimeSlots:', e);
+        // Failed to parse dateTimeSlots
       }
     }
 
@@ -1216,24 +1138,17 @@ router.post('/', authenticateToken, upload.fields([
       'Quadrangle', 'Rooftop'
     ];
     
-    console.log(`🔍 Checking location: "${location}", Is predefined: ${predefinedLocations.includes(location)}`);
-    
     if (location && !predefinedLocations.includes(location)) {
-      console.log(`📍 Custom location detected: "${location}" - Auto-creating availability`);
       
       try {
         const eventDate = new Date(startDate).toISOString().split('T')[0];
         const userDepartment = (req as any).user.department || 'Unknown';
-        
-        console.log(`📅 Event date: ${eventDate}, User department: ${userDepartment}`);
         
         // Check if availability already exists for this location and date
         const existingAvailability = await LocationAvailability.findOne({
           date: eventDate,
           locationName: location
         });
-        
-        console.log(`🔍 Existing availability check:`, existingAvailability ? 'Found' : 'Not found');
         
         if (!existingAvailability) {
           const newLocation = await LocationAvailability.create({
@@ -1245,23 +1160,15 @@ router.post('/', authenticateToken, upload.fields([
             setBy: userId,
             departmentName: userDepartment
           });
-          console.log(`✅ Auto-created location availability:`, newLocation);
-        } else {
-          console.log(`ℹ️ Location availability already exists for "${location}" on ${eventDate}`);
         }
       } catch (locationError) {
-        console.error('❌ ERROR auto-creating location availability:', locationError);
-        console.error('❌ ERROR details:', locationError instanceof Error ? locationError.message : 'Unknown error');
         // Don't fail the event creation if location availability fails
       }
-    } else {
-      console.log(`ℹ️ Skipping auto-create - predefined location or no location`);
     }
 
     // 🔔 NOTIFICATION DISABLED ON SUBMISSION
     // Notifications will only be sent when admin APPROVES the event
     // This ensures departments only get notified when requirements are released
-    console.log('ℹ️ Event submitted with status "submitted" - notifications will be sent after admin approval');
 
     res.status(201).json({
       success: true,
@@ -1269,9 +1176,6 @@ router.post('/', authenticateToken, upload.fields([
       data: savedEvent
     });
   } catch (error) {
-    console.error('❌ ERROR creating event:', error);
-    console.error('❌ ERROR stack:', error instanceof Error ? error.stack : 'No stack');
-    console.error('❌ ERROR message:', error instanceof Error ? error.message : 'Unknown error');
     res.status(500).json({
       success: false,
       message: 'Failed to create event request',
@@ -1322,7 +1226,6 @@ router.put('/:id/status', authenticateToken, async (req: Request, res: Response)
       data: event
     });
   } catch (error) {
-    console.error('Error updating event status:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update event status',
@@ -1362,7 +1265,6 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
       message: 'Event deleted successfully'
     });
   } catch (error) {
-    console.error('Error deleting event:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to delete event',
@@ -1378,13 +1280,8 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
     const { download } = req.query;
     const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
     
-    console.log('📂 [FILE] Attempting to serve attachment:', filename);
-    console.log('📂 [FILE] Full path:', filePath);
-    console.log('📂 [FILE] File exists:', fs.existsSync(filePath));
-    
     // Check if file exists
     if (!fs.existsSync(filePath)) {
-      console.log('❌ [FILE] File not found at path:', filePath);
       return res.status(404).json({
         success: false,
         message: 'File not found',
@@ -1400,7 +1297,6 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
     // Serve the file
     res.sendFile(filePath);
   } catch (error) {
-    console.error('Error serving attachment:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to serve attachment',
@@ -1454,7 +1350,6 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     if (endTime !== undefined) updateData.endTime = endTime;
     if (dateTimeSlots !== undefined) {
       updateData.dateTimeSlots = dateTimeSlots;
-      console.log('✅ Updating dateTimeSlots:', dateTimeSlots);
     }
     if (departmentRequirements !== undefined) updateData.departmentRequirements = departmentRequirements;
 
@@ -1474,8 +1369,6 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       ];
       
       if (!predefinedLocations.includes(location)) {
-        console.log(`📍 Custom location detected on update: "${location}" - Auto-creating availability`);
-        
         try {
           const eventDate = new Date(updatedEvent.startDate).toISOString().split('T')[0];
           const userDepartment = (req as any).user.department || 'Unknown';
@@ -1496,12 +1389,8 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
               setBy: userId,
               departmentName: userDepartment
             });
-            console.log(`✅ Auto-created location availability for "${location}" on ${eventDate}`);
-          } else {
-            console.log(`ℹ️ Location availability already exists for "${location}" on ${eventDate}`);
           }
         } catch (locationError) {
-          console.error('⚠️ Error auto-creating location availability:', locationError);
           // Don't fail the event update if location availability fails
         }
       }
@@ -1571,10 +1460,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
           },
           timestamp: new Date()
         });
-        
-        console.log(`📝 Activity log created: ${event.requestor} rescheduled event ${event.eventTitle}`);
       } catch (logError) {
-        console.error('Error creating activity log:', logError);
         // Don't fail the request if logging fails
       }
     }
@@ -1585,7 +1471,6 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       event: updatedEvent
     });
   } catch (error) {
-    console.error('Error updating event:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to update event',
@@ -1601,13 +1486,8 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
     const { download } = req.query;
     const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
     
-    console.log(' [GOVFILE] Attempting to serve government file:', filename);
-    console.log(' [GOVFILE] Full path:', filePath);
-    console.log(' [GOVFILE] File exists:', fs.existsSync(filePath));
-    
     // Check if file exists
     if (!fs.existsSync(filePath)) {
-      console.log(' [GOVFILE] File not found at path:', filePath);
       return res.status(404).json({
         success: false,
         message: 'Government file not found',
@@ -1623,7 +1503,6 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
     // Serve the file
     res.sendFile(filePath);
   } catch (error) {
-    console.error('Error serving government file:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to serve government file',

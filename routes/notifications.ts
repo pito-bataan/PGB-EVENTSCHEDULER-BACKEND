@@ -18,21 +18,16 @@ router.get('/user/:userId', authenticateToken, async (req, res) => {
       return res.status(403).json({ success: false, message: 'Unauthorized' });
     }
     
-    console.log(`📋 Fetching notifications for user: ${userId}`);
-    
     // Get all notifications for this user from the Notification collection
     const notifications = await Notification.find({ userId })
       .sort({ createdAt: -1 })
       .limit(50); // Limit to last 50 notifications
-    
-    console.log(`📋 Found ${notifications.length} notifications`);
     
     res.json({
       success: true,
       data: notifications
     });
   } catch (error) {
-    console.error('Error fetching user notifications:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch notifications'
@@ -58,7 +53,6 @@ router.get('/read-status', authenticateToken, async (req, res) => {
       data: readNotificationIds
     });
   } catch (error) {
-    console.error('Error fetching read notifications:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch read notifications'
@@ -74,8 +68,6 @@ router.post('/mark-read', authenticateToken, async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     const { notificationId, eventId, notificationType, category } = req.body;
-    
-    console.log('📖 Marking notification as read');
     
     // Check if already marked as read
     const existingRead = await NotificationRead.findOne({
@@ -113,8 +105,6 @@ router.post('/mark-read', authenticateToken, async (req, res) => {
         eventId,
         readAt: notificationRead.readAt
       });
-      
-      console.log('🔄 Notification read event broadcasted');
     }
     
     res.json({
@@ -123,7 +113,6 @@ router.post('/mark-read', authenticateToken, async (req, res) => {
       data: notificationRead
     });
   } catch (error) {
-    console.error('Error marking notification as read:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to mark notification as read'
@@ -139,8 +128,6 @@ router.post('/mark-multiple-read', authenticateToken, async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     const { notifications } = req.body; // Array of notification objects
-    
-    console.log(`📖 Marking ${notifications.length} notifications as read`);
     
     const readRecords = [];
     
@@ -179,8 +166,6 @@ router.post('/mark-multiple-read', authenticateToken, async (req, res) => {
           readAt: record.readAt
         });
       });
-      
-      console.log(`🔄 Broadcasted ${readRecords.length} notification-read events`);
     }
     
     res.json({
@@ -189,7 +174,6 @@ router.post('/mark-multiple-read', authenticateToken, async (req, res) => {
       data: readRecords
     });
   } catch (error) {
-    console.error('Error marking multiple notifications as read:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to mark notifications as read'
@@ -219,7 +203,6 @@ router.get('/stats', authenticateToken, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Error fetching notification stats:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch notification statistics'
@@ -232,8 +215,6 @@ router.post('/broadcast-new', authenticateToken, async (req, res) => {
   try {
     const { eventId, notificationType, targetUsers } = req.body;
     
-    console.log(`📢 Broadcasting new notification for event ${eventId} to ${targetUsers.length} users`);
-    
     const io = req.app.get('io');
     if (io) {
       // Emit to specific users
@@ -244,8 +225,6 @@ router.post('/broadcast-new', authenticateToken, async (req, res) => {
           timestamp: new Date()
         });
       });
-      
-      console.log(`🔄 Broadcasted new-notification event to ${targetUsers.length} users`);
     }
     
     res.json({
@@ -253,7 +232,6 @@ router.post('/broadcast-new', authenticateToken, async (req, res) => {
       message: 'Notification broadcasted successfully'
     });
   } catch (error) {
-    console.error('Error broadcasting notification:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to broadcast notification'
@@ -269,8 +247,6 @@ router.get('/status', authenticateToken, async (req, res) => {
       return res.status(401).json({ success: false, message: 'User not authenticated' });
     }
     
-    console.log('📋 Fetching status notifications');
-    
     // Get status notifications for events created by this user
     const statusNotifications = await StatusNotification.find({ requestorId: userId })
       .populate('eventId', 'eventTitle')
@@ -278,14 +254,11 @@ router.get('/status', authenticateToken, async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(50); // Limit to last 50 notifications
     
-    console.log(`📋 Found ${statusNotifications.length} status notifications`);
-    
     res.json({
       success: true,
       data: statusNotifications
     });
   } catch (error) {
-    console.error('Error fetching status notifications:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to fetch status notifications'
@@ -309,8 +282,6 @@ router.post('/status', authenticateToken, async (req, res) => {
     
     const updatedBy = req.user?.id;
     
-    console.log('📝 Creating status notification');
-    
     // Get event title for the notification message
     const event = await Event.findById(eventId);
     const eventTitle = event?.eventTitle || 'Unknown Event';
@@ -330,7 +301,6 @@ router.post('/status', authenticateToken, async (req, res) => {
     });
 
     await notification.save();
-    console.log('📝 Status notification created in main notifications collection');
     
     // Create legacy status notification for backward compatibility
     const statusNotification = new StatusNotification({
@@ -346,7 +316,6 @@ router.post('/status', authenticateToken, async (req, res) => {
     });
     
     await statusNotification.save();
-    console.log('📝 Legacy status notification also created');
     
     // Populate the notification for real-time broadcast
     await statusNotification.populate('eventId', 'eventTitle');
@@ -379,8 +348,6 @@ router.post('/status', authenticateToken, async (req, res) => {
         eventTitle: (statusNotification.eventId as any)?.eventTitle || 'Unknown Event',
         message: `${requirementName} status changed to "${newStatus}" by ${departmentName}`
       });
-      
-      console.log('🔄 Status update broadcasted');
     }
     
     res.json({
@@ -389,7 +356,6 @@ router.post('/status', authenticateToken, async (req, res) => {
       data: statusNotification
     });
   } catch (error) {
-    console.error('Error creating status notification:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to create status notification'
