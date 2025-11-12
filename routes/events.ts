@@ -1413,7 +1413,7 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
 router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { location, startDate, startTime, endDate, endTime, departmentRequirements } = req.body;
+    const { location, startDate, startTime, endDate, endTime, dateTimeSlots, departmentRequirements } = req.body;
     const userId = (req as any).user._id;
 
     // Find the event and check ownership
@@ -1452,6 +1452,10 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     if (startTime !== undefined) updateData.startTime = startTime;
     if (endDate !== undefined) updateData.endDate = new Date(endDate);
     if (endTime !== undefined) updateData.endTime = endTime;
+    if (dateTimeSlots !== undefined) {
+      updateData.dateTimeSlots = dateTimeSlots;
+      console.log('✅ Updating dateTimeSlots:', dateTimeSlots);
+    }
     if (departmentRequirements !== undefined) updateData.departmentRequirements = departmentRequirements;
 
     // Update the event
