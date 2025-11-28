@@ -116,6 +116,133 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
   }
 });
 
+// PATCH /api/events/:eventId/requirements/:requirementId/replies - Add a reply to a requirement conversation
+router.patch('/:eventId/requirements/:requirementId/replies', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, requirementId } = req.params;
+    const { message, role } = req.body as { message: string; role: 'requestor' | 'department' };
+    const user = (req as any).user;
+
+    if (!message || !message.trim()) {
+      return res.status(400).json({
+        success: false,
+        message: 'Reply message is required'
+      });
+    }
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Permission checks
+    const userDepartment = user.department;
+    const isRequestor = user.id && event.createdBy && user.id.toString() === event.createdBy.toString();
+    const isTaggedDepartment = userDepartment && event.taggedDepartments.includes(userDepartment);
+
+    if (role === 'requestor' && !isRequestor) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the event requestor can reply as requestor'
+      });
+    }
+
+    if (role === 'department' && !isTaggedDepartment) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only tagged departments can reply as department'
+      });
+    }
+
+    // Find the requirement and append reply
+    let requirementFound = false;
+    for (const [, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
+      const requirement: any = requirements.find(r => r.id === requirementId);
+      if (requirement) {
+        if (!Array.isArray(requirement.replies)) {
+          requirement.replies = [];
+        }
+
+        requirement.replies.push({
+          userId: user.id,
+          userName: user.name || user.fullName || user.email || 'Unknown User',
+          role,
+          message: message.trim(),
+          createdAt: new Date().toISOString()
+        });
+
+        requirement.lastUpdated = new Date().toISOString();
+        requirementFound = true;
+        break;
+      }
+    }
+
+    if (!requirementFound) {
+      return res.status(404).json({
+        success: false,
+        message: 'Requirement not found'
+      });
+    }
+
+    event.markModified('departmentRequirements');
+    await event.save();
+
+    // Emit real-time reply update to requestor (and optionally sender)
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        const eventIdStr = (event._id as any).toString();
+        const latestReply = (() => {
+          for (const [, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
+            const r: any = requirements.find(rr => rr.id === requirementId);
+            if (r && Array.isArray(r.replies) && r.replies.length > 0) {
+              return r.replies[r.replies.length - 1];
+            }
+          }
+          return null;
+        })();
+
+        const replyUpdateData = {
+          eventId: eventIdStr,
+          requirementId,
+          reply: latestReply,
+          updatedEvent: event
+        };
+
+        // Notify event requestor
+        io.to(`user-${event.createdBy}`).emit('reply-update', replyUpdateData);
+
+        // Also notify the user who sent the reply (for mirror updates)
+        const updatingUserId = (req as any).user.id;
+        if (updatingUserId && updatingUserId.toString() !== (event.createdBy as any).toString()) {
+          io.to(`user-${updatingUserId}`).emit('reply-update', replyUpdateData);
+        }
+
+        // Broadcast globally so tagged departments listening on reply-update also refresh
+        io.emit('reply-update', replyUpdateData);
+      }
+    } catch (socketError) {
+      // Don't fail the main request if socket emission fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Reply added successfully',
+      data: event
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to add reply to requirement',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // PATCH /api/events/:eventId/requirements/:requirementId/status - Update requirement status
 router.patch('/:eventId/requirements/:requirementId/status', authenticateToken, async (req: Request, res: Response) => {
   try {

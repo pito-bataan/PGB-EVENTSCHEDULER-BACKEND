@@ -15,6 +15,13 @@ export interface Requirement {
   lastUpdated?: string;
   requirementsStatus?: 'on-hold' | 'released'; // Track if requirements are on-hold or released to departments
   yesNoAnswer?: 'yes' | 'no'; // For yesno type requirements
+  replies?: Array<{
+    userId: string;
+    userName: string;
+    role: 'requestor' | 'department';
+    message: string;
+    createdAt: string;
+  }>;
 }
 
 export interface IGovFile {
