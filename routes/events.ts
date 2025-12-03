@@ -1293,9 +1293,13 @@ router.post('/', authenticateToken, upload.fields([
       }
     }
 
-    // 🔔 NOTIFICATION DISABLED ON SUBMISSION
-    // Notifications will only be sent when admin APPROVES the event
-    // This ensures departments only get notified when requirements are released
+    // 🔔 EMIT SOCKET.IO EVENT FOR REAL-TIME UPDATES
+    // Emit to all connected admin users so they see new submitted events in real-time
+    const io = (req.app as any).get('io');
+    if (io) {
+      io.emit('event-created', savedEvent.toObject());
+      console.log('📡 Socket.IO event-created emitted for event:', savedEvent.eventTitle);
+    }
 
     res.status(201).json({
       success: true,
