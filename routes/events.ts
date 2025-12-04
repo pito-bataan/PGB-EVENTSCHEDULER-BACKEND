@@ -1297,8 +1297,22 @@ router.post('/', authenticateToken, upload.fields([
     // Emit to all connected admin users so they see new submitted events in real-time
     const io = (req.app as any).get('io');
     if (io) {
-      io.emit('event-created', savedEvent.toObject());
-      console.log('📡 Socket.IO event-created emitted for event:', savedEvent.eventTitle);
+      const eventData = savedEvent.toObject();
+      console.log('📡 About to emit event-created:', {
+        eventTitle: eventData.eventTitle,
+        status: eventData.status,
+        connectedClients: io.engine.clientsCount
+      });
+      
+      // Broadcast to all connected clients using multiple methods to ensure delivery
+      io.emit('event-created', eventData);
+      
+      // Also emit to all sockets in the default namespace
+      io.of('/').emit('event-created', eventData);
+      
+      console.log('✅ Socket.IO event-created emitted successfully for event:', savedEvent.eventTitle);
+    } else {
+      console.error('❌ Socket.IO instance not found in app');
     }
 
     res.status(201).json({
