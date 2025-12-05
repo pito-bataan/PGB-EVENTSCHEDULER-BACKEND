@@ -877,10 +877,13 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
 
     const events = await Event.find({
       taggedDepartments: userDepartment,
-      status: 'approved' // ONLY show approved events (requirements are released)
+      status: { $in: ['approved', 'completed'] } // Show both approved (ongoing) and completed events for records
     })
     .populate('createdBy', 'name email department')
-    .sort({ createdAt: -1 })
+    .sort({ 
+      status: 1, // Approved (0) comes before completed (1) alphabetically
+      startDate: 1 // Then sort by start date (earliest first)
+    })
     .lean(); // Bypass Mongoose cache and get fresh data from MongoDB
 
     // Recalculate availability for each event based on current startDate
