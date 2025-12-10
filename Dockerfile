@@ -26,6 +26,22 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
 WORKDIR /app
 
+# Accept environment variables as build arguments
+ARG MONGODB_URI
+ARG JWT_SECRET
+ARG JWT_EXPIRES_IN
+ARG PORT
+ARG NODE_ENV
+ARG CORS_ORIGINS
+
+# Set environment variables from build arguments
+ENV MONGODB_URI=$MONGODB_URI
+ENV JWT_SECRET=$JWT_SECRET
+ENV JWT_EXPIRES_IN=$JWT_EXPIRES_IN
+ENV PORT=$PORT
+ENV NODE_ENV=$NODE_ENV
+ENV CORS_ORIGINS=$CORS_ORIGINS
+
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
