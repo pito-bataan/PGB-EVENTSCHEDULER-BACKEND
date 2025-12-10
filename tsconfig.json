@@ -10,7 +10,7 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true,
+    "outDir": "./dist",
     "allowImportingTsExtensions": false,
     "types": ["node"],
     "lib": ["ES2022"]
