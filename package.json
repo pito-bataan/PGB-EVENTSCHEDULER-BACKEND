@@ -2,7 +2,7 @@
   "name": "pgb-event-scheduler-backend",
   "version": "1.0.0",
   "description": "PGB Event Scheduler Backend API",
-  "main": "server.ts",
+  "main": "dist/server.js",
   "type": "module",
   "scripts": {
     "start": "node server.js",
