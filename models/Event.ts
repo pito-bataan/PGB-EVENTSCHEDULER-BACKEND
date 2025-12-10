@@ -21,6 +21,7 @@ export interface Requirement {
     role: 'requestor' | 'department';
     message: string;
     createdAt: string;
+    isRead?: boolean; // Track if reply has been read by requestor
   }>;
 }
 

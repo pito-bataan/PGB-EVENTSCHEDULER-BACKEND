@@ -172,7 +172,8 @@ router.patch('/:eventId/requirements/:requirementId/replies', authenticateToken,
           userName: user.name || user.fullName || user.email || 'Unknown User',
           role,
           message: message.trim(),
-          createdAt: new Date().toISOString()
+          createdAt: new Date().toISOString(),
+          isRead: false // Mark new replies as unread
         });
 
         requirement.lastUpdated = new Date().toISOString();
@@ -1624,6 +1625,63 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to update event',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// PUT /api/events/:eventId/mark-replies-read - Mark all unread replies as read
+router.put('/:eventId/mark-replies-read', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId } = req.params;
+    const user = (req as any).user;
+
+    // Find the event
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user is the event requestor
+    const isRequestor = user.id && event.createdBy && user.id.toString() === event.createdBy.toString();
+    if (!isRequestor) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the event requestor can mark replies as read'
+      });
+    }
+
+    // Mark all unread replies as read for all requirements
+    let repliesMarked = 0;
+    for (const [, requirements] of Object.entries(event.departmentRequirements) as [string, any[]][]) {
+      for (const requirement of requirements) {
+        if (Array.isArray(requirement.replies)) {
+          for (const reply of requirement.replies) {
+            if (!reply.isRead) {
+              reply.isRead = true;
+              repliesMarked++;
+            }
+          }
+        }
+      }
+    }
+
+    // Mark the departmentRequirements field as modified for Mongoose
+    event.markModified('departmentRequirements');
+    await event.save();
+
+    res.status(200).json({
+      success: true,
+      message: `Marked ${repliesMarked} replies as read`,
+      data: event
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark replies as read',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }

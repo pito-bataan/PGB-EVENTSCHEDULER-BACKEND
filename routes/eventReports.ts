@@ -73,11 +73,12 @@ router.post('/:eventId/upload', authenticateToken, upload.fields([
       });
     }
 
-    // Verify event is completed
-    if (event.status !== 'completed') {
+    // Verify event status allows report submission (approved, ongoing, submitted, or completed)
+    const allowedStatuses = ['approved', 'ongoing', 'submitted', 'completed'];
+    if (!allowedStatuses.includes(event.status)) {
       return res.status(400).json({
         success: false,
-        message: 'Reports can only be uploaded for completed events'
+        message: 'Reports can only be uploaded for approved, ongoing, submitted, or completed events'
       });
     }
 
