@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
-import LocationRequirement from '../models/LocationRequirement';
-import { authenticateToken } from '../middleware/auth';
+import LocationRequirement from '../models/LocationRequirement.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 

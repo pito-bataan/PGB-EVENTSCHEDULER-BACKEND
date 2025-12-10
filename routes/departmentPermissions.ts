@@ -1,6 +1,6 @@
 import express from 'express';
-import DepartmentPermissions from '../models/DepartmentPermissions';
-import { authenticateToken } from '../middleware/auth';
+import DepartmentPermissions from '../models/DepartmentPermissions.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 import express from 'express';
-import LoginLog from '../models/LoginLog';
-import { authenticateToken } from '../middleware/auth';
+import LoginLog from '../models/LoginLog.js';
+import { authenticateToken } from '../middleware/auth.js';
 
 const router = express.Router();
 

@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
-import LocationAvailability, { ILocationAvailability } from '../models/LocationAvailability';
-import { authenticateToken } from '../middleware/auth';
+import LocationAvailability, { ILocationAvailability } from '../models/LocationAvailability.js';
+import { authenticateToken } from '../middleware/auth.js';
 import mongoose from 'mongoose';
 
 const router = express.Router();
