@@ -20,7 +20,7 @@ RUN npm run build
 # Production stage with Nginx
 FROM node:18-alpine
 
-RUN apk add --no-cache nginx supervisor curl
+RUN apk add --no-cache curl
 
 RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 
@@ -44,31 +44,11 @@ ENV CORS_ORIGINS=$CORS_ORIGINS
 
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-COPY --from=builder /app/nginx.conf /etc/nginx/nginx.conf
-
-RUN mkdir -p uploads/events uploads/messages && chown -R nodejs:nodejs /app
-
-RUN mkdir -p /etc/supervisor.d && \
-    echo '[supervisord]' > /etc/supervisor.d/supervisord.ini && \
-    echo 'nodaemon=true' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'user=root' >> /etc/supervisor.d/supervisord.ini && \
-    echo '' >> /etc/supervisor.d/supervisord.ini && \
-    echo '[program:nginx]' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'command=/usr/sbin/nginx -g "daemon off;"' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'autostart=true' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'autorestart=true' >> /etc/supervisor.d/supervisord.ini && \
-    echo '' >> /etc/supervisor.d/supervisord.ini && \
-    echo '[program:nodejs]' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'command=node dist/server.js' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'directory=/app' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'user=nodejs' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'autostart=true' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'autorestart=true' >> /etc/supervisor.d/supervisord.ini
 
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl -f http://localhost:3000/api/health || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor.d/supervisord.ini"]
+# Run Node.js directly (simpler debugging)
+CMD ["node", "dist/server.js"]
