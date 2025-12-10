@@ -213,6 +213,14 @@ router.post('/login', async (req: Request, res: Response) => {
     // Generate JWT token
     const token = generateToken(user);
 
+    // Set HTTP-Only cookie for secure token storage
+    res.cookie('authToken', token, {
+      httpOnly: true,        // Can't be accessed by JavaScript (XSS protection)
+      secure: process.env.NODE_ENV === 'production', // Only HTTPS in production
+      sameSite: 'lax',       // CSRF protection
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+    });
+
     // Remove password from response
     const userResponse = user.toObject();
     delete (userResponse as any).password;
@@ -222,7 +230,7 @@ router.post('/login', async (req: Request, res: Response) => {
       message: 'Login successful',
       data: {
         user: userResponse,
-        token
+        token // Still send token for localStorage as fallback
       }
     });
   } catch (error) {
@@ -484,6 +492,30 @@ router.put('/:id/status', authenticateToken, requireAdmin, async (req: Request, 
     res.status(500).json({
       success: false,
       message: 'Failed to update user status',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// POST /api/users/logout - User logout
+router.post('/logout', (req: Request, res: Response) => {
+  try {
+    // Clear the HTTP-Only cookie
+    res.clearCookie('authToken', {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax'
+    });
+
+    res.status(200).json({
+      success: true,
+      message: 'Logout successful'
+    });
+  } catch (error) {
+    console.error('Error during logout:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Logout failed',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
