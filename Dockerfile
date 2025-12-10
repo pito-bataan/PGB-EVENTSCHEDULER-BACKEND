@@ -14,6 +14,9 @@ RUN --mount=type=cache,target=/root/.npm \
 # Copy source code (this layer changes most often, so it's last)
 COPY . .
 
+# Build TypeScript to JavaScript
+RUN npm run build
+
 # Production stage with Nginx
 FROM node:18-alpine
 
@@ -24,8 +27,9 @@ RUN addgroup -g 1001 -S nodejs && adduser -S nodejs -u 1001
 WORKDIR /app
 
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app .
-COPY nginx.conf /etc/nginx/nginx.conf
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/nginx.conf /etc/nginx/nginx.conf
 
 RUN mkdir -p uploads/events uploads/messages && chown -R nodejs:nodejs /app
 
@@ -40,7 +44,7 @@ RUN mkdir -p /etc/supervisor.d && \
     echo 'autorestart=true' >> /etc/supervisor.d/supervisord.ini && \
     echo '' >> /etc/supervisor.d/supervisord.ini && \
     echo '[program:nodejs]' >> /etc/supervisor.d/supervisord.ini && \
-    echo 'command=npm run dev' >> /etc/supervisor.d/supervisord.ini && \
+    echo 'command=node dist/server.js' >> /etc/supervisor.d/supervisord.ini && \
     echo 'directory=/app' >> /etc/supervisor.d/supervisord.ini && \
     echo 'user=nodejs' >> /etc/supervisor.d/supervisord.ini && \
     echo 'autostart=true' >> /etc/supervisor.d/supervisord.ini && \
