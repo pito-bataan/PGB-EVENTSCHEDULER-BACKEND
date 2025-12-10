@@ -46,10 +46,10 @@ COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package.json ./package.json
 
-EXPOSE 3000
+EXPOSE 5000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
+  CMD curl -f http://localhost:5000/api/health || exit 1
 
 # Run Node.js directly (simpler debugging)
 CMD ["node", "dist/server.js"]
