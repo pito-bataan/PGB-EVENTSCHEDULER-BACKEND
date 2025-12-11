@@ -77,7 +77,9 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Trust proxy - required for Coolify/reverse proxy setups
 app.set('trust proxy', 1);
 
-// Log CORS origins on startup
+// Log environment and CORS origins on startup for debugging
+console.log('🔐 NODE_ENV:', process.env.NODE_ENV);
+console.log('🔐 CORS_ORIGINS env var:', process.env.CORS_ORIGINS);
 console.log('🔐 CORS Allowed Origins:', allowedOrigins);
 
 // Log all incoming requests for debugging (disabled for production - too verbose)
