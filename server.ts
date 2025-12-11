@@ -270,9 +270,9 @@ const startServer = async () => {
   try {
     await connectDB();
     
-    httpServer.listen(PORT, () => {
+    httpServer.listen(PORT, '0.0.0.0' as any, () => {
       console.log('🚀 PGB Event Scheduler Backend Server Started!');
-      console.log(`📡 Server running on: http://localhost:${PORT}`);
+      console.log(`📡 Server running on: http://0.0.0.0:${PORT}`);
       console.log(`🔌 Socket.IO enabled`);
       console.log(`🏥 Health check: http://localhost:${PORT}/api/health`);
       console.log(`📅 Events API: http://localhost:${PORT}/api/events`);
