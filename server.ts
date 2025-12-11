@@ -92,8 +92,6 @@ console.log('🔐 CORS Allowed Origins:', allowedOrigins);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
-  console.log(`📨 Incoming ${req.method} request from origin: ${origin || 'no-origin'}`);
-  
   // Check if origin is allowed
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -101,15 +99,12 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization');
-    
-    console.log('✅ CORS headers set for origin:', origin);
   } else if (origin) {
-    console.log('❌ Origin not allowed:', origin);
+    console.log('❌ CORS rejected origin:', origin);
   }
   
   // Handle preflight
   if (req.method === 'OPTIONS') {
-    console.log('✅ Handling OPTIONS preflight request for:', req.path);
     return res.sendStatus(204);
   }
   
@@ -121,25 +116,22 @@ app.use(cors({
   origin: function (origin, callback) {
     // Allow requests with no origin (like mobile apps, curl, Postman)
     if (!origin) {
-      // Disabled verbose logging
-      // console.log('✅ CORS: Allowing request with no origin');
       return callback(null, true);
     }
     
     if (allowedOrigins.indexOf(origin) !== -1) {
-      // Disabled verbose logging
-      // console.log('✅ CORS: Allowing origin:', origin);
       callback(null, true);
     } else {
+      console.log('❌ CORS rejected origin:', origin);
       callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-  exposedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept'],
+  exposedHeaders: ['Content-Type', 'Authorization', 'Set-Cookie'],
   preflightContinue: false,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 200
 }));
 
 // Increase body size limits for large file uploads
