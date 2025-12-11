@@ -71,7 +71,8 @@ const io = new Server(httpServer, {
 // Make Socket.IO instance available to routes
 app.set('io', io);
 
-const PORT = process.env.PORT || 3000;
+// Use port 3000 by default. Ignore PORT env var if it's 5000 (Coolify default)
+const PORT = (process.env.PORT && process.env.PORT !== '5000') ? parseInt(process.env.PORT) : 3000;
 const MONGODB_URI = process.env.MONGODB_URI;
 
 // Trust proxy - required for Coolify/reverse proxy setups
