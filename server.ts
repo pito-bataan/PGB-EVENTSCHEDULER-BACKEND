@@ -33,8 +33,14 @@ const httpServer = createServer(app);
 
 // CORS allowed origins from environment variable or defaults
 const allowedOrigins = process.env.CORS_ORIGINS 
-  ? process.env.CORS_ORIGINS.split(',') 
-  : ["http://localhost:5173", "http://localhost:8080", "http://localhost:3000"];
+  ? process.env.CORS_ORIGINS.split(',').map(origin => origin.trim())
+  : [
+      "http://localhost:5173", 
+      "http://localhost:8080", 
+      "http://localhost:3000",
+      "https://eventscheduler.bataan.gov.ph",
+      "https://eventscheduler-api.bataan.gov.ph"
+    ];
 
 // Re-enable Socket.IO server with proper connection management
 const io = new Server(httpServer, {
@@ -65,6 +71,9 @@ const MONGODB_URI = process.env.MONGODB_URI;
 
 // Trust proxy - required for Coolify/reverse proxy setups
 app.set('trust proxy', 1);
+
+// Log CORS origins on startup
+console.log('🔐 CORS Allowed Origins:', allowedOrigins);
 
 // Log all incoming requests for debugging (disabled for production - too verbose)
 // app.use((req, res, next) => {
