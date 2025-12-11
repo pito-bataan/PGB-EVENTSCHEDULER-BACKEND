@@ -24,9 +24,14 @@ import { startScheduler, runCleanupNow } from './services/scheduler.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Load environment variables
-const envPath = path.join(__dirname, '.env');
-const result = dotenv.config({ path: envPath });
+// Load environment variables (only if .env file exists - in Docker, use ENV vars instead)
+try {
+  const envPath = path.join(__dirname, '.env');
+  dotenv.config({ path: envPath });
+} catch (error) {
+  // Silently fail if .env doesn't exist (expected in Docker)
+  console.log('ℹ️ No .env file found (expected in Docker - using environment variables)');
+}
 
 const app = express();
 const httpServer = createServer(app);
