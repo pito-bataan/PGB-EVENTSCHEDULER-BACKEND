@@ -92,6 +92,8 @@ console.log('🔐 CORS Allowed Origins:', allowedOrigins);
 app.use((req, res, next) => {
   const origin = req.headers.origin;
   
+  console.log(`📨 Incoming ${req.method} request from origin: ${origin || 'no-origin'}`);
+  
   // Check if origin is allowed
   if (origin && allowedOrigins.includes(origin)) {
     res.header('Access-Control-Allow-Origin', origin);
@@ -100,14 +102,14 @@ app.use((req, res, next) => {
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
     res.header('Access-Control-Expose-Headers', 'Content-Type, Authorization');
     
-    // Disabled verbose logging
-    // console.log('✅ Manual CORS headers set for origin:', origin);
+    console.log('✅ CORS headers set for origin:', origin);
+  } else if (origin) {
+    console.log('❌ Origin not allowed:', origin);
   }
   
   // Handle preflight
   if (req.method === 'OPTIONS') {
-    // Disabled verbose logging
-    // console.log('✅ Handling OPTIONS preflight request');
+    console.log('✅ Handling OPTIONS preflight request for:', req.path);
     return res.sendStatus(204);
   }
   
