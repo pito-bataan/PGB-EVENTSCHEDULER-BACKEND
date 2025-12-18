@@ -170,6 +170,115 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
+// POST /api/location-availability/bulk-create - Bulk create location availabilities
+router.post('/bulk-create', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { locations } = req.body;
+    const userId = req.user!._id;
+    const userDepartment = req.user!.department;
+
+    if (!Array.isArray(locations) || locations.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'Locations array is required and must not be empty'
+      });
+    }
+
+    // Validate all locations
+    const validatedLocations = [];
+    const errors = [];
+
+    for (let i = 0; i < locations.length; i++) {
+      const loc = locations[i];
+      
+      if (!loc.date || !loc.locationName || loc.capacity === undefined || loc.capacity === null) {
+        errors.push(`Location ${i + 1}: Missing required fields`);
+        continue;
+      }
+
+      const capacityNum = typeof loc.capacity === 'string' ? parseInt(loc.capacity, 10) : loc.capacity;
+      
+      if (isNaN(capacityNum) || capacityNum < 1) {
+        errors.push(`Location ${i + 1}: Invalid capacity`);
+        continue;
+      }
+
+      if (!['available', 'unavailable'].includes(loc.status)) {
+        errors.push(`Location ${i + 1}: Invalid status`);
+        continue;
+      }
+
+      validatedLocations.push({
+        date: loc.date,
+        locationName: loc.locationName.trim(),
+        capacity: capacityNum,
+        description: loc.description?.trim() || '',
+        status: loc.status,
+        setBy: userId,
+        departmentName: userDepartment,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      });
+    }
+
+    if (validatedLocations.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'No valid locations to create',
+        errors
+      });
+    }
+
+    // Get existing locations to avoid duplicates
+    const existingLocations = await LocationAvailability.find({
+      $or: validatedLocations.map(loc => ({
+        date: loc.date,
+        locationName: { $regex: `^${loc.locationName}$`, $options: 'i' }
+      }))
+    });
+
+    const existingKeys = new Set(
+      existingLocations.map(loc => `${loc.date}-${loc.locationName.toLowerCase()}`)
+    );
+
+    // Filter out duplicates
+    const locationsToInsert = validatedLocations.filter(loc => {
+      const key = `${loc.date}-${loc.locationName.toLowerCase()}`;
+      return !existingKeys.has(key);
+    });
+
+    if (locationsToInsert.length === 0) {
+      return res.status(200).json({
+        success: true,
+        message: 'All locations already exist',
+        insertedCount: 0,
+        duplicateCount: validatedLocations.length
+      });
+    }
+
+    // Bulk insert using insertMany for optimal performance
+    const result = await LocationAvailability.insertMany(locationsToInsert, { 
+      ordered: false // Continue inserting even if some fail
+    });
+
+    res.status(201).json({
+      success: true,
+      message: `Successfully created ${result.length} location availabilities`,
+      insertedCount: result.length,
+      duplicateCount: validatedLocations.length - locationsToInsert.length,
+      requestedCount: locations.length,
+      errors: errors.length > 0 ? errors : undefined
+    });
+  } catch (error) {
+    console.error('Error bulk creating location availabilities:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to bulk create location availabilities',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // PUT /api/location-availability/:id - Update location availability
 router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -290,6 +399,48 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
     res.status(500).json({
       success: false,
       message: 'Failed to delete location availability',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// POST /api/location-availability/bulk-delete - Bulk delete location availabilities
+router.post('/bulk-delete', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { ids } = req.body;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: 'IDs array is required and must not be empty'
+      });
+    }
+
+    // Validate all IDs
+    const invalidIds = ids.filter(id => !mongoose.Types.ObjectId.isValid(id));
+    if (invalidIds.length > 0) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid location availability IDs: ${invalidIds.join(', ')}`
+      });
+    }
+
+    // Bulk delete using MongoDB's deleteMany
+    const result = await LocationAvailability.deleteMany({
+      _id: { $in: ids }
+    });
+
+    res.json({
+      success: true,
+      message: `Successfully deleted ${result.deletedCount} location availabilities`,
+      deletedCount: result.deletedCount,
+      requestedCount: ids.length
+    });
+  } catch (error) {
+    console.error('Error bulk deleting location availabilities:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to bulk delete location availabilities',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
