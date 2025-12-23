@@ -2,6 +2,7 @@ import express from 'express';
 import NotificationRead from '../models/NotificationRead.js';
 import StatusNotification from '../models/StatusNotification.js';
 import Notification from '../models/Notification.js';
+import NotificationDeleted from '../models/NotificationDeleted.js';
 import Event from '../models/Event.js';
 import { authenticateToken } from '../middleware/auth.js';
 
@@ -56,6 +57,29 @@ router.get('/read-status', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch read notifications'
+    });
+  }
+});
+
+// Get deleted/dismissed notifications for current user
+router.get('/deleted-status', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const deletedNotifications = await NotificationDeleted.find({ userId });
+    const deletedNotificationIds = deletedNotifications.map(n => n.notificationId);
+
+    res.json({
+      success: true,
+      data: deletedNotificationIds
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch deleted notifications'
     });
   }
 });
@@ -177,6 +201,76 @@ router.post('/mark-multiple-read', authenticateToken, async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to mark notifications as read'
+    });
+  }
+});
+
+// Delete/dismiss a notification for current user
+router.post('/delete', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { notificationId } = req.body;
+    if (!notificationId) {
+      return res.status(400).json({ success: false, message: 'notificationId is required' });
+    }
+
+    await NotificationDeleted.updateOne(
+      { userId, notificationId },
+      { $setOnInsert: { deletedAt: new Date() } },
+      { upsert: true }
+    );
+
+    res.json({
+      success: true,
+      message: 'Notification deleted'
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete notification'
+    });
+  }
+});
+
+// Delete/dismiss multiple notifications for current user
+router.post('/delete-multiple', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user?.id;
+    if (!userId) {
+      return res.status(401).json({ success: false, message: 'User not authenticated' });
+    }
+
+    const { notificationIds } = req.body;
+    if (!Array.isArray(notificationIds) || notificationIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'notificationIds array is required' });
+    }
+
+    const ops = notificationIds.map((notificationId: string) => ({
+      updateOne: {
+        filter: { userId, notificationId },
+        update: { $setOnInsert: { deletedAt: new Date() } },
+        upsert: true
+      }
+    }));
+
+    const result = await NotificationDeleted.bulkWrite(ops, { ordered: false });
+
+    res.json({
+      success: true,
+      message: 'Notifications deleted',
+      data: {
+        requested: notificationIds.length,
+        upserted: result.upsertedCount || 0
+      }
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: 'Failed to delete notifications'
     });
   }
 });
