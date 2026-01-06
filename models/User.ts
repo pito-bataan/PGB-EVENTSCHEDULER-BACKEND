@@ -38,14 +38,8 @@ const UserSchema: Schema = new Schema({
   department: {
     type: String,
     required: [true, 'Department is required'],
-    enum: [
-      'ACCOUNTING', 'ADMINISTRATOR', 'ASSESSOR', 'BAC', 'BCMH', 'BHSO', 'BUDGET', 
-      'DOLE', 'INB', 'JCPJMH', 'LEGAL', 'MBDA', 'MDH', 'ODH', 'OMSP', 'OPA', 
-      'OPAgriculturist', 'OPG', 'OPPDC', 'OSM', 'OSSP', 'OVG', 'PCEDO', 'PDRRMO', 
-      'PEO', 'PESO', 'PG-ENRO', 'PGO', 'PGO-BAC', 'PGO-IAS', 'PGO-ISKOLAR', 
-      'PGSO', 'PHO', 'PHRMO', 'PIO', 'PITO', 'PLO', 'PMO', 'PPDO', 'PPO', 'PPP', 
-      'PSWDO', 'SAP', 'SP', 'TOURISM', 'TREASURY', 'VET'
-    ]
+    trim: true,
+    set: (v: string) => (typeof v === 'string' ? v.toUpperCase().trim() : v)
   },
   role: {
     type: String,

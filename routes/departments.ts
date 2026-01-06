@@ -78,10 +78,22 @@ router.post('/', authenticateToken, requireAdmin, async (req: Request, res: Resp
       });
     }
 
+    const normalizedRequirements = requirements === undefined
+      ? []
+      : requirements;
+
+    if (!Array.isArray(normalizedRequirements)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Validation error',
+        error: 'requirements must be an array'
+      });
+    }
+
     // Create new department
     const newDepartment: IDepartment = new Department({
       name: name.toUpperCase().trim(),
-      requirements: requirements || '',
+      requirements: normalizedRequirements,
       isVisible
     });
 
