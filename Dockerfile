@@ -50,7 +50,7 @@ COPY --from=builder /app/package.json ./package.json
 EXPOSE 3000
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl -f http://localhost:3000/api/health || exit 1
+  CMD sh -c 'curl -f "http://localhost:${PORT:-3000}/api/health" || exit 1'
 
 # Run Node.js directly (simpler debugging)
 CMD ["node", "dist/server.js"]

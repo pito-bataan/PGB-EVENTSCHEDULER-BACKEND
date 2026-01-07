@@ -1390,7 +1390,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
   try {
     const { id } = req.params;
     const userId = (req as any).user._id;
-    const userRole = (req as any).user.role;
+    const userRoleRaw = (req as any).user.role;
+    const userRole = (userRoleRaw || '').toString().toLowerCase();
 
     const event = await Event.findById(id);
 
@@ -1401,8 +1402,8 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
       });
     }
 
-    // Check if user owns the event or is admin
-    if (event.createdBy.toString() !== userId && userRole !== 'admin') {
+    // Check if user owns the event or is admin/superadmin
+    if (event.createdBy.toString() !== userId && userRole !== 'admin' && userRole !== 'superadmin') {
       return res.status(403).json({
         success: false,
         message: 'Access denied. You can only delete your own events.'
