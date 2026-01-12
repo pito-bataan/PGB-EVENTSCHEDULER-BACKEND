@@ -558,7 +558,7 @@ router.post('/name/:name/requirements', authenticateToken, async (req: Request, 
       });
     }
 
-    const department = await Department.findOne({ name: name.toUpperCase() });
+    const department = await Department.findOne({ name: String(name).toUpperCase() });
 
     if (!department) {
       return res.status(404).json({

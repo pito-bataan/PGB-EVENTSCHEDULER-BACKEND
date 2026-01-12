@@ -58,7 +58,7 @@ router.get('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
       return res.status(400).json({
         success: false,
         message: 'Invalid location availability ID'
@@ -286,7 +286,7 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     const { date, locationName, capacity, description, status }: LocationAvailabilityRequest = req.body;
     const userId = (req as any).user.userId;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
       return res.status(400).json({
         success: false,
         message: 'Invalid location availability ID'
@@ -373,7 +373,7 @@ router.delete('/:id', authenticateToken, async (req: Request, res: Response) => 
   try {
     const { id } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(id)) {
+    if (!mongoose.Types.ObjectId.isValid(String(id))) {
       return res.status(400).json({
         success: false,
         message: 'Invalid location availability ID'
@@ -452,8 +452,8 @@ router.get('/calendar/:year/:month', authenticateToken, async (req: Request, res
     const { year, month } = req.params;
     
     // Validate year and month
-    const yearNum = parseInt(year);
-    const monthNum = parseInt(month);
+    const yearNum = parseInt(String(year));
+    const monthNum = parseInt(String(month));
     
     if (isNaN(yearNum) || isNaN(monthNum) || monthNum < 1 || monthNum > 12) {
       return res.status(400).json({
@@ -463,8 +463,10 @@ router.get('/calendar/:year/:month', authenticateToken, async (req: Request, res
     }
 
     // Create date range for the month
-    const startDate = `${year}-${month.padStart(2, '0')}-01`;
-    const endDate = `${year}-${month.padStart(2, '0')}-31`;
+    const monthStr = String(month);
+    const yearStr = String(year);
+    const startDate = `${yearStr}-${monthStr.padStart(2, '0')}-01`;
+    const endDate = `${yearStr}-${monthStr.padStart(2, '0')}-31`;
 
     const locationAvailabilities = await LocationAvailability
       .find({

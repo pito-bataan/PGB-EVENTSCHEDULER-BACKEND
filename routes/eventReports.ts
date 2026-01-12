@@ -201,7 +201,7 @@ router.get('/:eventId', authenticateToken, async (req: Request, res: Response) =
 });
 
 // DELETE /api/event-reports/:eventId/:reportType - Delete a specific report
-router.delete('/:eventId/:reportType', authenticateToken, async (req: Request, res: Response) => {
+router.delete('/:eventId/reports/:reportType', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { eventId, reportType } = req.params;
     const userId = (req as any).user._id.toString();
@@ -233,7 +233,8 @@ router.delete('/:eventId/:reportType', authenticateToken, async (req: Request, r
 
     // Validate report type
     const validReportTypes = ['completionReport', 'postActivityReport', 'assessmentReport', 'feedbackForm'];
-    if (!validReportTypes.includes(reportType)) {
+    const reportTypeKey = String(reportType);
+    if (!validReportTypes.includes(reportTypeKey)) {
       return res.status(400).json({
         success: false,
         message: 'Invalid report type'
@@ -241,7 +242,7 @@ router.delete('/:eventId/:reportType', authenticateToken, async (req: Request, r
     }
 
     // Get the file path before deleting
-    const report = (event.eventReports as any)?.[reportType];
+    const report = (event.eventReports as any)?.[reportTypeKey];
     if (report?.fileUrl) {
       const filePath = path.join(process.cwd(), report.fileUrl);
       
@@ -256,7 +257,7 @@ router.delete('/:eventId/:reportType', authenticateToken, async (req: Request, r
     if (!event.eventReports) {
       event.eventReports = {};
     }
-    (event.eventReports as any)[reportType] = {
+    (event.eventReports as any)[reportTypeKey] = {
       uploaded: false,
       uploadedAt: undefined,
       fileUrl: undefined

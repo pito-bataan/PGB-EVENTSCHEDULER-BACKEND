@@ -153,7 +153,7 @@ router.delete('/cleanup/:days', authenticateToken, async (req: Request, res: Res
   try {
     const { days } = req.params;
     const daysAgo = new Date();
-    daysAgo.setDate(daysAgo.getDate() - parseInt(days));
+    daysAgo.setDate(daysAgo.getDate() - parseInt(String(days)));
     
     const result = await UserActivityLog.deleteMany({
       timestamp: { $lt: daysAgo }

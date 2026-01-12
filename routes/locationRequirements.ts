@@ -51,14 +51,16 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 router.get('/:locationName', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { locationName } = req.params;
+
+    const locationNameStr = decodeURIComponent(String(locationName));
     
     const requirement = await LocationRequirement.findOne({ 
-      locationNames: decodeURIComponent(locationName) 
+      locationNames: locationNameStr
     }).populate('setBy', 'name email');
     
     if (!requirement) {
       return res.json({ 
-        locationNames: [decodeURIComponent(locationName)],
+        locationNames: [locationNameStr],
         requirements: [] 
       });
     }

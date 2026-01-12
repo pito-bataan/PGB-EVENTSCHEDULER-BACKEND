@@ -482,7 +482,7 @@ router.delete('/:messageId', authenticateToken, async (req: Request, res: Respon
 router.get('/file/:filename', authenticateToken, (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
-    const filePath = path.join(process.cwd(), 'uploads', 'messages', filename);
+    const filePath = path.join(process.cwd(), 'uploads', 'messages', String(filename));
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {

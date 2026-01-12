@@ -1497,7 +1497,8 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const { download } = req.query;
-    const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
+    const downloadFlag = Array.isArray(download) ? download[0] : download;
+    const filePath = path.join(process.cwd(), 'uploads', 'events', String(filename));
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -1509,8 +1510,8 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
     }
     
     // If download=true, force download with Content-Disposition header
-    if (download === 'true') {
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (downloadFlag === 'true') {
+      res.setHeader('Content-Disposition', `attachment; filename="${String(filename)}"`);
     }
     
     // Serve the file
@@ -1760,7 +1761,8 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
   try {
     const { filename } = req.params;
     const { download } = req.query;
-    const filePath = path.join(process.cwd(), 'uploads', 'events', filename);
+    const downloadFlag = Array.isArray(download) ? download[0] : download;
+    const filePath = path.join(process.cwd(), 'uploads', 'events', String(filename));
     
     // Check if file exists
     if (!fs.existsSync(filePath)) {
@@ -1772,8 +1774,8 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
     }
     
     // If download=true, force download with Content-Disposition header
-    if (download === 'true') {
-      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    if (downloadFlag === 'true') {
+      res.setHeader('Content-Disposition', `attachment; filename="${String(filename)}"`);
     }
     
     // Serve the file

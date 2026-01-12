@@ -439,8 +439,10 @@ router.get('/department/:departmentId/summary', authenticateToken, async (req: R
 
     let dateFilter: any = {};
     if (month && year) {
-      const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
-      const endDate = `${year}-${String(month).padStart(2, '0')}-31`;
+      const yearStr = Array.isArray(year) ? year[0] : year;
+      const monthStr = Array.isArray(month) ? month[0] : month;
+      const startDate = `${String(yearStr)}-${String(monthStr).padStart(2, '0')}-01`;
+      const endDate = `${String(yearStr)}-${String(monthStr).padStart(2, '0')}-31`;
       dateFilter = {
         date: {
           $gte: startDate,
@@ -452,7 +454,7 @@ router.get('/department/:departmentId/summary', authenticateToken, async (req: R
     const summary = await ResourceAvailability.aggregate([
       {
         $match: {
-          departmentId: new mongoose.Types.ObjectId(departmentId),
+          departmentId: new mongoose.Types.ObjectId(String(departmentId)),
           ...dateFilter
         }
       },
