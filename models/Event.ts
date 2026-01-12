@@ -99,7 +99,7 @@ export interface IEvent extends Document {
   departmentRequirements: Record<string, Requirement[]>;
   
   // Status & Metadata
-  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed';
+  status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed' | 'cancelled';
   reason?: string; // Rejection or cancellation reason
   submittedAt?: Date;
   createdBy: mongoose.Types.ObjectId; // Reference to User
@@ -287,7 +287,7 @@ const EventSchema: Schema = new Schema({
   // Status & Metadata
   status: {
     type: String,
-    enum: ['draft', 'submitted', 'approved', 'rejected', 'completed'],
+    enum: ['draft', 'submitted', 'approved', 'rejected', 'completed', 'cancelled'],
     default: 'draft'
   },
   reason: {

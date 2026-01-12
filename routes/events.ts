@@ -445,11 +445,28 @@ router.patch('/:eventId/requirements/:requirementId/departments', authenticateTo
     }
 
     // Add requirement to new department(s)
+    // IMPORTANT: clone + reset dept-specific fields so conversation/decline notes don't leak
+    // across departments when a requirement is re-assigned.
+    const baseRequirement = {
+      ...(requirement || {}),
+      departmentNotes: '',
+      replies: [],
+      status: 'pending',
+      lastUpdated: new Date().toISOString()
+    };
+
+    // Some older records may have extra fields (e.g., decline reason fields) that should not carry over.
+    // Strip common variants if present.
+    delete (baseRequirement as any).declineReason;
+    delete (baseRequirement as any).declinedReason;
+    delete (baseRequirement as any).reason;
+
     for (const newDept of departments) {
       if (!event.departmentRequirements[newDept]) {
         event.departmentRequirements[newDept] = [];
       }
-      event.departmentRequirements[newDept].push(requirement);
+      // Clone per-department so arrays don't share object references.
+      event.departmentRequirements[newDept].push({ ...baseRequirement });
     }
 
     // Update tagged departments list - ONLY include departments that have requirements
@@ -591,6 +608,39 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
         message: 'Event not found'
       });
     }
+
+    // Permission rules:
+    // - Admin/superadmin can approve/reject/cancel.
+    // - Requestor (event owner) can ONLY cancel, and only before approval.
+    const user = (req as any).user;
+    const userRole = String(user?.role || '').toLowerCase();
+    const isAdmin = userRole === 'admin' || userRole === 'superadmin';
+    const isOwner = user?._id && event.createdBy && event.createdBy.toString() === user._id.toString();
+
+    if (!isAdmin) {
+      if (!isOwner) {
+        return res.status(403).json({
+          success: false,
+          message: 'You can only update status for your own events'
+        });
+      }
+
+      if (status !== 'cancelled') {
+        return res.status(403).json({
+          success: false,
+          message: 'You are only allowed to cancel your own event before approval'
+        });
+      }
+
+      // Only allow cancellation before admin approval
+      const cancellableStatuses = ['draft', 'submitted'];
+      if (!cancellableStatuses.includes(String(event.status || '').toLowerCase())) {
+        return res.status(400).json({
+          success: false,
+          message: 'This event can no longer be cancelled'
+        });
+      }
+    }
     
     // If approving the event, RELEASE requirements to departments
     if (status === 'approved') {
@@ -626,6 +676,11 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       }
       
       updateData.departmentRequirements = departmentRequirements;
+
+      // If requestor cancelled and no reason provided, use a default
+      if (!isAdmin && isOwner && (!reason || !String(reason).trim())) {
+        updateData.reason = 'Requestor cancelled';
+      }
     }
     
     // Update the event
@@ -980,6 +1035,8 @@ router.get('/', authenticateToken, async (req: Request, res: Response) => {
 router.get('/my', authenticateToken, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user._id;
+    const recalcAvailability = String((req.query as any)?.recalcAvailability ?? 'true').toLowerCase() !== 'false';
+
     const events = await Event.find({ createdBy: userId })
       .populate('createdBy', 'name email department')
       .sort({ createdAt: -1 })
@@ -988,7 +1045,17 @@ router.get('/my', authenticateToken, async (req: Request, res: Response) => {
     // Disabled verbose logging
     // console.log(`📋 Found ${events.length} user events`);
 
-    // Recalculate availability for each event based on current startDate
+    // Optional: Recalculate availability for each event based on current startDate
+    // This is expensive (many DB lookups). For list screens (My Events / Reports / Sidebar badges),
+    // callers can skip it by passing ?recalcAvailability=false.
+    if (!recalcAvailability) {
+      return res.status(200).json({
+        success: true,
+        count: events.length,
+        data: events
+      });
+    }
+
     const eventsWithUpdatedAvailability = await Promise.all(events.map(async (event: any) => {
       const eventDate = new Date(event.startDate).toISOString().split('T')[0]; // Format: YYYY-MM-DD
       // Disabled verbose logging
