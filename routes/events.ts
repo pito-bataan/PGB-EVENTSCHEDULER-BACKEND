@@ -450,6 +450,7 @@ router.patch('/:eventId/requirements/:requirementId/departments', authenticateTo
     const baseRequirement = {
       ...(requirement || {}),
       departmentNotes: '',
+      notes: '',
       replies: [],
       status: 'pending',
       lastUpdated: new Date().toISOString()
@@ -457,9 +458,13 @@ router.patch('/:eventId/requirements/:requirementId/departments', authenticateTo
 
     // Some older records may have extra fields (e.g., decline reason fields) that should not carry over.
     // Strip common variants if present.
+    delete (baseRequirement as any).departmentNote;
+    delete (baseRequirement as any).note;
     delete (baseRequirement as any).declineReason;
     delete (baseRequirement as any).declinedReason;
     delete (baseRequirement as any).reason;
+    delete (baseRequirement as any).declinedAt;
+    delete (baseRequirement as any).declinedBy;
 
     for (const newDept of departments) {
       if (!event.departmentRequirements[newDept]) {
