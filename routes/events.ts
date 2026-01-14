@@ -116,6 +116,71 @@ router.patch('/:eventId/requirements/:requirementId/notes', authenticateToken, a
   }
 });
 
+// DELETE /api/events/:eventId/attachment/:filename - Delete an attachment file from an event
+router.delete('/:eventId/attachment/:filename', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, filename } = req.params;
+    const userId = (req as any).user._id;
+    const userRoleRaw = (req as any).user.role;
+    const userRole = (userRoleRaw || '').toString().toLowerCase();
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user owns the event or is admin/superadmin
+    if (event.createdBy.toString() !== userId.toString() && userRole !== 'admin' && userRole !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only edit your own events.'
+      });
+    }
+
+    const filenameStr = String(filename);
+    const existing = Array.isArray((event as any).attachments)
+      ? (event as any).attachments.find((a: any) => a && a.filename === filenameStr)
+      : null;
+
+    if (!existing) {
+      return res.status(404).json({
+        success: false,
+        message: 'Attachment not found on this event'
+      });
+    }
+
+    // Remove from DB first
+    (event as any).attachments = (event as any).attachments.filter((a: any) => a && a.filename !== filenameStr);
+    event.markModified('attachments');
+    await event.save();
+
+    // Best-effort delete from disk
+    const filePath = path.join(process.cwd(), 'uploads', 'events', filenameStr);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // Don't fail request if disk cleanup fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Attachment deleted successfully',
+      data: event
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete attachment',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
 // PATCH /api/events/:eventId/requirements/:requirementId/replies - Add a reply to a requirement conversation
 router.patch('/:eventId/requirements/:requirementId/replies', authenticateToken, async (req: Request, res: Response) => {
   try {
@@ -1789,6 +1854,79 @@ router.get('/govfile/:filename', (req: Request, res: Response) => {
     res.status(500).json({
       success: false,
       message: 'Failed to serve government file',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+// DELETE /api/events/:eventId/govfile/:fileKey/:filename - Delete a government file (brieferTemplate/programme/availableForDL)
+router.delete('/:eventId/govfile/:fileKey/:filename', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { eventId, fileKey, filename } = req.params;
+    const userId = (req as any).user._id;
+    const userRoleRaw = (req as any).user.role;
+    const userRole = (userRoleRaw || '').toString().toLowerCase();
+
+    const allowedKeys = new Set(['brieferTemplate', 'programme', 'availableForDL']);
+    if (!allowedKeys.has(String(fileKey))) {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid government file type'
+      });
+    }
+
+    const event = await Event.findById(eventId);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    // Check if user owns the event or is admin/superadmin
+    if (event.createdBy.toString() !== userId.toString() && userRole !== 'admin' && userRole !== 'superadmin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. You can only edit your own events.'
+      });
+    }
+
+    const filenameStr = String(filename);
+    const key = String(fileKey) as 'brieferTemplate' | 'programme' | 'availableForDL';
+    const currentGov = (event as any).govFiles?.[key];
+
+    if (!currentGov || currentGov.filename !== filenameStr) {
+      return res.status(404).json({
+        success: false,
+        message: 'Government file not found on this event'
+      });
+    }
+
+    // Remove from DB
+    (event as any).govFiles = (event as any).govFiles || {};
+    delete (event as any).govFiles[key];
+    event.markModified('govFiles');
+    await event.save();
+
+    // Best-effort delete from disk
+    const filePath = path.join(process.cwd(), 'uploads', 'events', filenameStr);
+    try {
+      if (fs.existsSync(filePath)) {
+        fs.unlinkSync(filePath);
+      }
+    } catch {
+      // Don't fail request if disk cleanup fails
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: 'Government file deleted successfully',
+      data: event
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to delete government file',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
   }
