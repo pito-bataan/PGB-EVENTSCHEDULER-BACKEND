@@ -1,5 +1,4 @@
-# syntax=docker/dockerfile:1.4
-# Multi-stage build for faster deployments with BuildKit caching
+# Multi-stage build
 FROM node:18-alpine AS builder
 
 WORKDIR /app
@@ -7,9 +6,8 @@ WORKDIR /app
 # Copy package files first (for better layer caching)
 COPY package*.json ./
 
-# Install dependencies with cache mount for faster rebuilds
-RUN --mount=type=cache,target=/root/.npm \
-    npm install
+# Install dependencies
+RUN npm install
 
 # Copy source code (this layer changes most often, so it's last)
 COPY . .
