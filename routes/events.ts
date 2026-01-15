@@ -759,6 +759,56 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       updateData,
       { new: true }
     ).populate('createdBy', 'name email department');
+
+    // Create a persistent notification for the requestor so it appears in the Notifications page
+    try {
+      const requestorId = (event.createdBy as any)?.toString?.() || String(event.createdBy);
+
+      const tz = 'Asia/Manila';
+      const toDateOnly = (d: any): string | null => {
+        if (!d) return null;
+        const asDate = d instanceof Date ? d : new Date(d);
+        if (isNaN(asDate.getTime())) return null;
+        return asDate.toISOString().split('T')[0];
+      };
+      const formatSchedule = (startD: any, startT: string, endD: any, endT: string) => {
+        const sd = toDateOnly(startD);
+        const ed = toDateOnly(endD);
+        if (!sd || !ed) return '';
+        const sDate = new Date(`${sd}T00:00:00`);
+        const eDate = new Date(`${ed}T00:00:00`);
+        const sDateStr = sDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+        const eDateStr = eDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+        return `${sDateStr} ${startT} - ${eDateStr} ${endT}`;
+      };
+
+      const schedule = formatSchedule(
+        (updatedEvent as any)?.startDate || event.startDate,
+        (updatedEvent as any)?.startTime || event.startTime,
+        (updatedEvent as any)?.endDate || event.endDate,
+        (updatedEvent as any)?.endTime || event.endTime
+      );
+
+      const extras: string[] = [];
+      const requestorDept = (updatedEvent as any)?.requestorDepartment || (event as any).requestorDepartment;
+      if (requestorDept) extras.push(`Department: ${requestorDept}`);
+      if ((updatedEvent as any)?.location || event.location) extras.push(`Location: ${(updatedEvent as any)?.location || event.location}`);
+      if (schedule) extras.push(`Schedule: ${schedule}`);
+
+      const notifId = `event-status-${String(event._id)}-${String(status)}-${Date.now()}`;
+      await Notification.create({
+        id: notifId,
+        title: 'Event Status Updated',
+        message: `Your event "${event.eventTitle}" has been ${status}${extras.length ? `\n${extras.join('\n')}` : ''}`,
+        type: 'status',
+        category: 'status',
+        eventId: String(event._id),
+        eventDate: event.startDate ? event.startDate.toISOString() : undefined,
+        userId: requestorId
+      });
+    } catch (persistError) {
+      // Non-critical
+    }
     
     // Emit Socket.IO event for real-time updates
     const io = req.app.get('io');
@@ -766,6 +816,24 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       // Get admin name for notification
       const adminUser = (req as any).user;
       const adminName = adminUser?.name || 'Admin';
+
+      const tz = 'Asia/Manila';
+      const toDateOnly = (d: any): string | null => {
+        if (!d) return null;
+        const asDate = d instanceof Date ? d : new Date(d);
+        if (isNaN(asDate.getTime())) return null;
+        return asDate.toISOString().split('T')[0];
+      };
+      const formatSchedule = (startD: any, startT: string, endD: any, endT: string) => {
+        const sd = toDateOnly(startD);
+        const ed = toDateOnly(endD);
+        if (!sd || !ed) return '';
+        const sDate = new Date(`${sd}T00:00:00`);
+        const eDate = new Date(`${ed}T00:00:00`);
+        const sDateStr = sDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+        const eDateStr = eDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+        return `${sDateStr} ${startT} - ${eDateStr} ${endT}`;
+      };
       
       // Notify the event creator with new-notification event (for GlobalNotificationSystem)
       io.to(`user-${event.createdBy}`).emit('new-notification', {
@@ -777,6 +845,21 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
         adminName: adminName,
         updatedBy: adminName,
         message: `Your event "${event.eventTitle}" has been ${status} by ${adminName}`,
+        createdBy: (event.createdBy as any)?.toString?.() || String(event.createdBy),
+        requestor: (updatedEvent as any)?.createdBy?.name || (updatedEvent as any)?.createdBy?.username || (updatedEvent as any)?.createdBy?.email,
+        requestorEmail: (updatedEvent as any)?.createdBy?.email,
+        requestorDepartment: (updatedEvent as any)?.createdBy?.department || (updatedEvent as any)?.requestorDepartment || (event as any).requestorDepartment,
+        location: (updatedEvent as any)?.location || event.location,
+        startDate: (updatedEvent as any)?.startDate ? (updatedEvent as any).startDate.toISOString() : (event.startDate ? event.startDate.toISOString() : undefined),
+        startTime: (updatedEvent as any)?.startTime || event.startTime,
+        endDate: (updatedEvent as any)?.endDate ? (updatedEvent as any).endDate.toISOString() : (event.endDate ? event.endDate.toISOString() : undefined),
+        endTime: (updatedEvent as any)?.endTime || event.endTime,
+        schedule: formatSchedule(
+          (updatedEvent as any)?.startDate || event.startDate,
+          (updatedEvent as any)?.startTime || event.startTime,
+          (updatedEvent as any)?.endDate || event.endDate,
+          (updatedEvent as any)?.endTime || event.endTime
+        ),
         timestamp: Date.now()
       });
       
@@ -1620,28 +1703,90 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
     }
 
     // Check if this is a reschedule (date/time/location changes)
+    const normalizeSlotsForCompare = (slots: any) => {
+      if (!Array.isArray(slots)) return [];
+      return slots
+        .map((s) => {
+          const sd = s?.startDate ? new Date(s.startDate) : null;
+          const ed = s?.endDate ? new Date(s.endDate) : null;
+          return {
+            startDate: sd ? sd.toISOString().split('T')[0] : null,
+            startTime: s?.startTime ?? null,
+            endDate: ed ? ed.toISOString().split('T')[0] : null,
+            endTime: s?.endTime ?? null
+          };
+        })
+        .filter((s) => s.startDate && s.startTime && s.endDate && s.endTime);
+    };
+
+    const nextSlotsNormalized = dateTimeSlots !== undefined ? normalizeSlotsForCompare(dateTimeSlots) : null;
+    const currentSlotsNormalized = normalizeSlotsForCompare((event as any).dateTimeSlots);
+    const slotsChanged = nextSlotsNormalized ? JSON.stringify(nextSlotsNormalized) !== JSON.stringify(currentSlotsNormalized) : false;
+
     const isReschedule = (
       (location !== undefined && location !== event.location) ||
       (startDate !== undefined && startDate !== event.startDate?.toISOString().split('T')[0]) ||
       (startTime !== undefined && startTime !== event.startTime) ||
       (endDate !== undefined && endDate !== event.endDate?.toISOString().split('T')[0]) ||
-      (endTime !== undefined && endTime !== event.endTime)
+      (endTime !== undefined && endTime !== event.endTime) ||
+      slotsChanged
     );
     
+    const parseDateOnly = (value: any): Date | null => {
+      if (typeof value !== 'string') return null;
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+      const d = new Date(`${value}T00:00:00`);
+      return isNaN(d.getTime()) ? null : d;
+    };
+
+    const parsedStartDate = startDate !== undefined ? (parseDateOnly(startDate) || new Date(startDate)) : null;
+    const parsedEndDate = endDate !== undefined ? (parseDateOnly(endDate) || new Date(endDate)) : null;
+    const safeStartDate = parsedStartDate && !isNaN(parsedStartDate.getTime()) ? parsedStartDate : null;
+    let safeEndDate = parsedEndDate && !isNaN(parsedEndDate.getTime()) ? parsedEndDate : null;
+
+    if (safeStartDate && safeEndDate && safeEndDate.getTime() < safeStartDate.getTime()) {
+      safeEndDate = new Date(safeStartDate);
+    }
+
     // Build update object with only provided fields
     const updateData: any = {
       updatedAt: new Date()
     };
     
     if (location !== undefined) updateData.location = location;
-    if (startDate !== undefined) updateData.startDate = new Date(startDate);
+    if (startDate !== undefined && safeStartDate) updateData.startDate = safeStartDate;
     if (startTime !== undefined) updateData.startTime = startTime;
-    if (endDate !== undefined) updateData.endDate = new Date(endDate);
+    if (endDate !== undefined && safeEndDate) updateData.endDate = safeEndDate;
     if (endTime !== undefined) updateData.endTime = endTime;
     if (dateTimeSlots !== undefined) {
       updateData.dateTimeSlots = dateTimeSlots;
     }
     if (departmentRequirements !== undefined) updateData.departmentRequirements = departmentRequirements;
+
+    const shouldResetToSubmitted = isReschedule && (event.status || '').toString().toLowerCase() === 'approved';
+
+    // If an APPROVED event is rescheduled, reset status to submitted and reset tagged requirements confirmations
+    if (shouldResetToSubmitted) {
+      updateData.status = 'submitted';
+      updateData.submittedAt = new Date();
+
+      const baseReqs = (departmentRequirements !== undefined ? departmentRequirements : (event as any).departmentRequirements) || {};
+      const nextReqs: Record<string, any[]> = {};
+      Object.keys(baseReqs).forEach((dept) => {
+        const arr = Array.isArray(baseReqs[dept]) ? baseReqs[dept] : [];
+        nextReqs[dept] = arr.map((r: any) => {
+          if (!r || typeof r !== 'object') return r;
+          const status = (r.status || '').toString().toLowerCase();
+          if (!status || status === 'pending') return r;
+          return {
+            ...r,
+            status: 'pending',
+            lastUpdated: new Date().toISOString()
+          };
+        });
+      });
+      updateData.departmentRequirements = nextReqs;
+    }
 
     // Update the event
     const updatedEvent = await Event.findByIdAndUpdate(
@@ -1649,6 +1794,94 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       updateData,
       { new: true, runValidators: true }
     );
+
+    // Notify admins in real-time when an approved event is rescheduled (status reset to submitted)
+    if (updatedEvent && shouldResetToSubmitted) {
+      try {
+        const io = req.app.get('io');
+
+        const tz = 'Asia/Manila';
+
+        const toDateOnly = (d: any): string | null => {
+          if (!d) return null;
+          if (typeof d === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(d)) return d;
+          const asDate = d instanceof Date ? d : new Date(d);
+          if (isNaN(asDate.getTime())) return null;
+          return asDate.toISOString().split('T')[0];
+        };
+
+        const formatDateTime = (dateValue: any, time: string) => {
+          const dateOnly = toDateOnly(dateValue);
+          if (!dateOnly) return '';
+          const date = new Date(`${dateOnly}T00:00:00`);
+          const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: tz });
+
+          const [hoursStr, minutesStr] = String(time || '').split(':');
+          const hourRaw = parseInt(hoursStr);
+          const minutes = minutesStr || '00';
+          if (isNaN(hourRaw)) return dateStr;
+
+          const ampm = hourRaw >= 12 ? 'PM' : 'AM';
+          const displayHour = hourRaw % 12 || 12;
+          return `${dateStr} ${displayHour}:${minutes} ${ampm}`;
+        };
+
+        const oldStartFormatted = event.startDate ? formatDateTime(event.startDate, event.startTime) : '';
+        const oldEndFormatted = event.endDate ? formatDateTime(event.endDate, event.endTime) : '';
+        const newStartFormatted = updatedEvent.startDate ? formatDateTime(updatedEvent.startDate, updatedEvent.startTime) : '';
+        const newEndFormatted = updatedEvent.endDate ? formatDateTime(updatedEvent.endDate, updatedEvent.endTime) : '';
+        const oldSchedule = oldStartFormatted && oldEndFormatted ? `${oldStartFormatted} - ${oldEndFormatted}` : '';
+        const newSchedule = newStartFormatted && newEndFormatted ? `${newStartFormatted} - ${newEndFormatted}` : '';
+
+        const title = 'Event Rescheduled';
+        const message = `"${event.eventTitle}" was rescheduled by ${event.requestorDepartment}. Please review the updated schedule.`;
+
+        const admins = await User.find({
+          role: { $in: [/^Admin$/i, /^superadmin$/i] },
+          $or: [{ status: 'active' }, { status: { $exists: false } }]
+        }).select('_id role status');
+
+        console.log('📣 [RESCHEDULE NOTIF] shouldResetToSubmitted:', shouldResetToSubmitted);
+        console.log('📣 [RESCHEDULE NOTIF] eventId:', String(updatedEvent._id));
+        console.log('📣 [RESCHEDULE NOTIF] admins found:', admins.length);
+
+        if (admins.length > 0) {
+          const notificationId = `rescheduled-${String(updatedEvent._id)}-${Date.now()}`;
+
+          const notifDocs = admins.map((a: any) => ({
+            id: `${notificationId}-${String(a._id)}`,
+            title,
+            message,
+            type: 'status',
+            category: 'status',
+            eventId: String(updatedEvent._id),
+            eventDate: updatedEvent.startDate ? updatedEvent.startDate.toISOString() : undefined,
+            userId: String(a._id)
+          }));
+
+          await Notification.insertMany(notifDocs, { ordered: false });
+
+          if (io) {
+            admins.forEach((a: any) => {
+              io.to(`user-${String(a._id)}`).emit('new-notification', {
+                eventId: String(updatedEvent._id),
+                notificationType: 'event-rescheduled',
+                title,
+                message,
+                eventTitle: event.eventTitle,
+                requestorDepartment: event.requestorDepartment,
+                oldSchedule,
+                newSchedule,
+                timestamp: new Date()
+              });
+            });
+          }
+        }
+      } catch (notifyError) {
+        console.error('❌ [RESCHEDULE NOTIF] failed to emit:', notifyError);
+        // Don't fail the request if notification fails
+      }
+    }
     
     // 📍 AUTO-CREATE LOCATION AVAILABILITY FOR CUSTOM LOCATIONS (on update)
     if (location !== undefined && updatedEvent) {
