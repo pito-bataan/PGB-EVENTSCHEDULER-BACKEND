@@ -141,6 +141,69 @@ router.post('/', authenticateToken, async (req: Request, res: Response) => {
   }
 });
 
+// Delete a specific requirement from a specific location entry
+router.delete('/:locationKey/requirements/:requirementName', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const locationKey = decodeURIComponent(String(req.params.locationKey || ''));
+    const requirementName = decodeURIComponent(String(req.params.requirementName || '')).trim();
+
+    if (!locationKey) {
+      return res.status(400).json({ message: 'locationKey is required' });
+    }
+
+    if (!requirementName) {
+      return res.status(400).json({ message: 'requirementName is required' });
+    }
+
+    const locationNames = locationKey
+      .split(',')
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .sort();
+
+    if (locationNames.length === 0) {
+      return res.status(400).json({ message: 'At least one location name is required' });
+    }
+
+    const existingRequirement = await LocationRequirement.findOne({
+      locationNames: { $all: locationNames, $size: locationNames.length }
+    });
+
+    if (!existingRequirement) {
+      return res.status(404).json({ message: 'Location requirements not found' });
+    }
+
+    const beforeCount = existingRequirement.requirements.length;
+    existingRequirement.requirements = existingRequirement.requirements.filter((r: any) => {
+      const n = typeof r?.name === 'string' ? r.name.trim() : '';
+      return n !== requirementName;
+    });
+
+    if (existingRequirement.requirements.length === beforeCount) {
+      return res.status(404).json({ message: 'Requirement not found' });
+    }
+
+    if (existingRequirement.requirements.length === 0) {
+      const deleted = await LocationRequirement.findByIdAndDelete(existingRequirement._id);
+      return res.json({
+        message: 'Requirement deleted successfully (no requirements left; entry removed)',
+        data: deleted
+      });
+    }
+
+    existingRequirement.updatedAt = new Date();
+    const saved = await existingRequirement.save();
+
+    res.json({
+      message: 'Requirement deleted successfully',
+      data: saved
+    });
+  } catch (error) {
+    console.error('Error deleting location requirement item:', error);
+    res.status(500).json({ message: 'Error deleting location requirement item' });
+  }
+});
+
 // Delete requirements by ID
 router.delete('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {

@@ -102,6 +102,11 @@ export interface IEvent extends Document {
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed' | 'cancelled';
   reason?: string; // Rejection or cancellation reason
   submittedAt?: Date;
+
+  bacApprovalStatus?: 'pending' | 'approved' | 'rejected';
+  bacApprovedBy?: mongoose.Types.ObjectId;
+  bacApprovedAt?: Date;
+  bacNotes?: string;
   createdBy: mongoose.Types.ObjectId; // Reference to User
   createdAt: Date;
   updatedAt: Date;
@@ -296,6 +301,25 @@ const EventSchema: Schema = new Schema({
   },
   submittedAt: {
     type: Date
+  },
+
+  bacApprovalStatus: {
+    type: String,
+    enum: ['pending', 'approved', 'rejected'],
+    default: undefined
+  },
+  bacApprovedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    default: undefined
+  },
+  bacApprovedAt: {
+    type: Date,
+    default: undefined
+  },
+  bacNotes: {
+    type: String,
+    default: undefined
   },
   createdBy: {
     type: Schema.Types.ObjectId,

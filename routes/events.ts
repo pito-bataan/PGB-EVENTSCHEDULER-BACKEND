@@ -29,6 +29,177 @@ const storage = multer.diskStorage({
   }
 });
 
+// GET /api/events/bac/requests - List BAC-owned location requests (BAC only)
+router.get('/bac/requests', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const department = String((req as any).user?.department || '').trim().toUpperCase();
+    if (department !== 'BAC') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. BAC department only.'
+      });
+    }
+
+    const location = '5th Flr. Training Room 1 (BAC)';
+    const status = String(req.query.status || 'pending').toLowerCase();
+    const page = Math.max(1, parseInt(String(req.query.page || '1'), 10) || 1);
+    const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '10'), 10) || 10));
+    const skip = (page - 1) * limit;
+
+    const query: any = {
+      location,
+      status: 'submitted'
+    };
+
+    if (status === 'pending') {
+      query.bacApprovalStatus = { $in: ['pending', undefined, null] };
+    } else if (status === 'approved' || status === 'rejected') {
+      query.bacApprovalStatus = status;
+    }
+
+    const [items, total] = await Promise.all([
+      Event.find(query)
+        .sort({ submittedAt: -1, createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('createdBy', 'name email department'),
+      Event.countDocuments(query)
+    ]);
+
+    return res.json({
+      success: true,
+      page,
+      limit,
+      total,
+      data: items
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch BAC requests'
+    });
+  }
+});
+
+// PATCH /api/events/:id/bac-approval - Approve/Reject BAC-owned location request (BAC only)
+router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const department = String((req as any).user?.department || '').trim().toUpperCase();
+    if (department !== 'BAC') {
+      return res.status(403).json({
+        success: false,
+        message: 'Access denied. BAC department only.'
+      });
+    }
+
+    const { id } = req.params;
+    const decisionRaw = String(req.body?.decision || '').trim().toLowerCase();
+    const notes = typeof req.body?.notes === 'string' ? req.body.notes : undefined;
+
+    if (decisionRaw !== 'approved' && decisionRaw !== 'rejected') {
+      return res.status(400).json({
+        success: false,
+        message: 'Invalid decision. Must be approved or rejected.'
+      });
+    }
+
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({
+        success: false,
+        message: 'Event not found'
+      });
+    }
+
+    if (String(event.location || '').trim() !== '5th Flr. Training Room 1 (BAC)') {
+      return res.status(400).json({
+        success: false,
+        message: 'This event is not a BAC-owned location request.'
+      });
+    }
+
+    if (String(event.status || '').toLowerCase() !== 'submitted') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only submitted events can be processed by BAC.'
+      });
+    }
+
+    const bacStatus = (event as any).bacApprovalStatus;
+    if (bacStatus === 'approved' || bacStatus === 'rejected') {
+      return res.status(400).json({
+        success: false,
+        message: 'BAC decision has already been recorded for this request.'
+      });
+    }
+
+    (event as any).bacApprovalStatus = decisionRaw;
+    (event as any).bacApprovedBy = (req as any).user?._id;
+    (event as any).bacApprovedAt = new Date();
+    if (notes !== undefined) {
+      (event as any).bacNotes = notes;
+    }
+
+    const saved = await event.save();
+    await saved.populate('createdBy', 'name email department');
+
+    const io = (req.app as any).get('io');
+    if (io) {
+      io.emit('bac-request-updated', {
+        eventId: saved._id,
+        bacApprovalStatus: (saved as any).bacApprovalStatus,
+        location: saved.location
+      });
+
+      try {
+        const adminUsers = await User.find({
+          role: { $in: ['Admin', 'superadmin'] },
+          status: 'active'
+        }).select('_id name email role');
+
+        const schedule = (() => {
+          const startDateStr = saved.startDate ? new Date(saved.startDate).toISOString().split('T')[0] : '';
+          const endDateStr = saved.endDate ? new Date(saved.endDate).toISOString().split('T')[0] : '';
+          const startTimeStr = String(saved.startTime || '');
+          const endTimeStr = String(saved.endTime || '');
+          return startDateStr && startTimeStr && endDateStr && endTimeStr
+            ? `${startDateStr} ${startTimeStr} - ${endDateStr} ${endTimeStr}`
+            : '';
+        })();
+
+        adminUsers.forEach((a: any) => {
+          io.to(`user-${String(a._id)}`).emit('new-notification', {
+            notificationType: 'bac-approval-update',
+            type: 'bac-approval-update',
+            eventId: saved._id,
+            eventTitle: saved.eventTitle,
+            location: saved.location,
+            schedule,
+            requestor: saved.requestor,
+            requestorDepartment: saved.requestorDepartment,
+            bacApprovalStatus: (saved as any).bacApprovalStatus,
+            message: `BAC has ${decisionRaw} the request for "${saved.eventTitle}"`,
+            timestamp: Date.now()
+          });
+        });
+      } catch (e) {
+        console.error('❌ Failed to notify admins about BAC decision:', e);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `BAC decision recorded: ${decisionRaw}`,
+      data: saved
+    });
+  } catch (error) {
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to update BAC decision'
+    });
+  }
+});
+
 const upload = multer({
   storage: storage,
   limits: {
@@ -1477,6 +1648,7 @@ router.post('/', authenticateToken, upload.fields([
       departmentRequirements: departmentRequirements ? JSON.parse(departmentRequirements) : {},
       eventType: eventType || 'simple',
       status: 'submitted',
+      bacApprovalStatus: String(location || '').trim() === '5th Flr. Training Room 1 (BAC)' ? 'pending' : undefined,
       submittedAt: new Date(),
       createdBy: userId
     });
@@ -1535,6 +1707,44 @@ router.post('/', authenticateToken, upload.fields([
       
       // Also emit to all sockets in the default namespace
       io.of('/').emit('event-created', eventData);
+
+      // Notify BAC department in real-time for BAC-owned location
+      if (String(location || '').trim() === '5th Flr. Training Room 1 (BAC)') {
+        try {
+          const bacUsers = await User.find({
+            department: 'BAC',
+            status: 'active'
+          }).select('_id name email department');
+
+          const eventTitleStr = String(eventData.eventTitle || 'Event');
+          const requestorDeptStr = String(eventData.requestorDepartment || 'Unknown');
+          const requestorStr = String(eventData.requestor || 'Unknown');
+          const startDateStr = eventData.startDate ? new Date(eventData.startDate).toISOString().split('T')[0] : '';
+          const endDateStr = eventData.endDate ? new Date(eventData.endDate).toISOString().split('T')[0] : '';
+          const startTimeStr = String(eventData.startTime || '');
+          const endTimeStr = String(eventData.endTime || '');
+          const schedule = startDateStr && startTimeStr && endDateStr && endTimeStr
+            ? `${startDateStr} ${startTimeStr} - ${endDateStr} ${endTimeStr}`
+            : '';
+
+          bacUsers.forEach((u: any) => {
+            io.to(`user-${String(u._id)}`).emit('new-notification', {
+              notificationType: 'bac-location-request',
+              type: 'bac-location-request',
+              eventId: eventData._id,
+              eventTitle: eventTitleStr,
+              location: String(location),
+              schedule,
+              requestor: requestorStr,
+              requestorDepartment: requestorDeptStr,
+              message: `New request for BAC location: "${eventTitleStr}"`,
+              timestamp: Date.now()
+            });
+          });
+        } catch (e) {
+          console.error('❌ Failed to emit BAC location notification:', e);
+        }
+      }
       
       console.log('✅ Socket.IO event-created emitted successfully for event:', savedEvent.eventTitle);
     } else {
