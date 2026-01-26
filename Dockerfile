@@ -7,7 +7,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install dependencies
-RUN npm install
+RUN npm ci --include=dev
 
 # Copy source code (this layer changes most often, so it's last)
 COPY . .
