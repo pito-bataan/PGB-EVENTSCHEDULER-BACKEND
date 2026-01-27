@@ -46,9 +46,13 @@ router.get('/bac/requests', authenticateToken, async (req: Request, res: Respons
     const limit = Math.min(50, Math.max(1, parseInt(String(req.query.limit || '10'), 10) || 10));
     const skip = (page - 1) * limit;
 
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
     const query: any = {
       location,
-      status: 'submitted'
+      status: { $in: ['submitted', 'approved'] },
+      endDate: { $gte: today }
     };
 
     if (status === 'pending') {
@@ -118,11 +122,24 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
       });
     }
 
-    if (String(event.status || '').toLowerCase() !== 'submitted') {
+    const eventStatus = String(event.status || '').toLowerCase();
+    if (eventStatus !== 'submitted' && eventStatus !== 'approved') {
       return res.status(400).json({
         success: false,
-        message: 'Only submitted events can be processed by BAC.'
+        message: 'Only submitted or approved events can be processed by BAC.'
       });
+    }
+
+    const endDate = (event as any).endDate ? new Date((event as any).endDate) : null;
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (endDate < today) {
+        return res.status(400).json({
+          success: false,
+          message: 'Past events can no longer be processed by BAC.'
+        });
+      }
     }
 
     const bacStatus = (event as any).bacApprovalStatus;
