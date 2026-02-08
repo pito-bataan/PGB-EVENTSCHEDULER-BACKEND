@@ -1274,7 +1274,7 @@ router.get('/tagged', authenticateToken, async (req: Request, res: Response) => 
 
     const events = await Event.find({
       taggedDepartments: userDepartment,
-      status: { $in: ['approved', 'completed'] } // Show both approved (ongoing) and completed events for records
+      status: { $in: ['approved', 'completed', 'cancelled'] } // Include cancelled so departments see cancelled tagged events
     })
     .populate('createdBy', 'name email department')
     .sort({ 
@@ -1902,6 +1902,77 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
       message: 'Failed to serve attachment',
       error: error instanceof Error ? error.message : 'Unknown error'
     });
+  }
+});
+
+// PATCH /api/events/:id/status - Allow event creator to cancel their own event (even if approved)
+router.patch('/:id/status', authenticateToken, async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const requestedStatusRaw = String(req.body?.status || '').toLowerCase();
+    const reason = typeof req.body?.reason === 'string' ? req.body.reason : undefined;
+    const userId = (req as any).user._id?.toString();
+
+    if (requestedStatusRaw !== 'cancelled') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only cancellation is supported for this endpoint.'
+      });
+    }
+
+    const event = await Event.findById(id);
+    if (!event) {
+      return res.status(404).json({ success: false, message: 'Event not found' });
+    }
+
+    // Only the creator can cancel through this endpoint
+    if (event.createdBy?.toString() !== userId) {
+      return res.status(403).json({ success: false, message: 'Access denied. You can only cancel your own events.' });
+    }
+
+    // Disallow cancelling completed or already-cancelled events
+    const currentStatus = String((event as any).status || '').toLowerCase();
+    if (currentStatus === 'completed' || currentStatus === 'cancelled') {
+      return res.status(400).json({ success: false, message: `Event is already ${currentStatus} and cannot be changed.` });
+    }
+
+    // Disallow cancelling past events (by endDate)
+    const endDate = (event as any).endDate ? new Date((event as any).endDate) : null;
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      if (endDate < today) {
+        return res.status(400).json({ success: false, message: 'Past events can no longer be cancelled.' });
+      }
+    }
+
+    // Perform cancellation
+    (event as any).status = 'cancelled';
+    if (reason !== undefined) {
+      (event as any).cancellationReason = reason;
+    }
+    (event as any).cancelledAt = new Date();
+    (event as any).cancelledBy = userId;
+
+    const saved = await event.save();
+    await saved.populate('createdBy', 'name email department');
+
+    // Emit socket event for real-time updates
+    const io = (req.app as any).get('io');
+    if (io) {
+      try {
+        io.emit('event-cancelled', {
+          eventId: saved._id,
+          status: (saved as any).status,
+          cancelledBy: userId,
+          cancellationReason: (saved as any).cancellationReason || '',
+        });
+      } catch (e) {}
+    }
+
+    return res.json({ success: true, message: 'Event cancelled successfully', data: saved });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Failed to cancel event' });
   }
 });
 
