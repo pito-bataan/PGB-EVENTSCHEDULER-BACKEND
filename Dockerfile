@@ -1,5 +1,5 @@
 # Multi-stage build
-FROM node:18-alpine AS builder
+FROM public.ecr.aws/docker/library/node:18-alpine AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ COPY . .
 RUN npm run build
 
 # Production stage with Nginx
-FROM node:18-alpine
+FROM public.ecr.aws/docker/library/node:18-alpine
 
 RUN apk add --no-cache curl
 
