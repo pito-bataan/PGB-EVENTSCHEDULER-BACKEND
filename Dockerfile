@@ -15,6 +15,9 @@ COPY . .
 # Build TypeScript to JavaScript
 RUN npm run build
 
+# Remove devDependencies after build to reduce final image size
+RUN npm prune --omit=dev
+
 # Production stage with Nginx
 FROM public.ecr.aws/docker/library/node:18-alpine
 
