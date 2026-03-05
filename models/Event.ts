@@ -66,7 +66,7 @@ export interface IEvent extends Document {
   multipleLocations: boolean;
   description?: string;
   eventType: 'simple' | 'complex' | 'simple-meeting';
-  
+
   // Schedule Information
   startDate: Date;
   startTime: string;
@@ -78,26 +78,26 @@ export interface IEvent extends Document {
     endDate: Date;
     endTime: string;
   }>; // Additional date/time slots for multi-day events
-  
+
   // Contact Information
   contactNumber: string;
   contactEmail: string;
-  
+
   // File Attachments
   attachments: IAttachment[];
   noAttachments: boolean;
-  
+
   // Government Files (for w/o gov events)
   govFiles?: {
     brieferTemplate?: IGovFile;
     availableForDL?: IGovFile;
     programme?: IGovFile;
   };
-  
+
   // Department & Requirements
   taggedDepartments: string[];
   departmentRequirements: Record<string, Requirement[]>;
-  
+
   // Status & Metadata
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed' | 'cancelled';
   reason?: string; // Rejection or cancellation reason
@@ -110,7 +110,7 @@ export interface IEvent extends Document {
   createdBy: mongoose.Types.ObjectId; // Reference to User
   createdAt: Date;
   updatedAt: Date;
-  
+
   // Event Reports (uploaded after event completion)
   eventReports?: {
     completionReport?: IEventReport;
@@ -118,7 +118,7 @@ export interface IEvent extends Document {
     assessmentReport?: IEventReport;
     feedbackForm?: IEventReport;
   };
-  
+
   // Reports Status (pending or completed)
   reportsStatus?: 'pending' | 'completed';
 }
@@ -218,7 +218,7 @@ const EventSchema: Schema = new Schema({
     enum: ['simple', 'complex', 'simple-meeting'],
     default: 'simple-meeting'
   },
-  
+
   // Schedule Information
   startDate: {
     type: Date,
@@ -247,7 +247,7 @@ const EventSchema: Schema = new Schema({
     }],
     default: undefined
   },
-  
+
   // Contact Information
   contactNumber: {
     type: String,
@@ -259,9 +259,9 @@ const EventSchema: Schema = new Schema({
     required: [true, 'Contact email is required'],
     lowercase: true,
     trim: true,
-    match: [/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/, 'Invalid email format']
+    match: [/^[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}$/, 'Invalid email format']
   },
-  
+
   // File Attachments
   attachments: {
     type: [AttachmentSchema],
@@ -271,14 +271,14 @@ const EventSchema: Schema = new Schema({
     type: Boolean,
     default: false
   },
-  
+
   // Government Files (for w/o gov events)
   govFiles: {
     brieferTemplate: GovFileSchema,
     availableForDL: GovFileSchema,
     programme: GovFileSchema
   },
-  
+
   // Department & Requirements
   taggedDepartments: {
     type: [String],
@@ -288,7 +288,7 @@ const EventSchema: Schema = new Schema({
     type: Schema.Types.Mixed,
     default: {}
   },
-  
+
   // Status & Metadata
   status: {
     type: String,
@@ -326,7 +326,7 @@ const EventSchema: Schema = new Schema({
     ref: 'User',
     required: [true, 'Creator is required']
   },
-  
+
   // Event Reports (uploaded after event completion)
   eventReports: {
     completionReport: EventReportSchema,
@@ -334,7 +334,7 @@ const EventSchema: Schema = new Schema({
     assessmentReport: EventReportSchema,
     feedbackForm: EventReportSchema
   },
-  
+
   // Reports Status (pending or completed)
   reportsStatus: {
     type: String,
