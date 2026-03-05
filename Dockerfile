@@ -9,7 +9,7 @@ WORKDIR /app
 COPY package*.json ./
 
 # Install ALL deps (including devDeps needed to compile TypeScript)
-RUN npm ci --no-audit --loglevel=error
+RUN npm ci --include=dev --no-audit --loglevel=error
 
 # Copy source code
 COPY . .
