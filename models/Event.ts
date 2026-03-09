@@ -10,6 +10,7 @@ export interface Requirement {
   isAvailable: boolean;
   availabilityNotes: string;
   quantity: number;
+  quantitiesByDate?: Record<string, number>;
   status?: string;
   departmentNotes?: string;
   lastUpdated?: string;
@@ -102,6 +103,9 @@ export interface IEvent extends Document {
   status: 'draft' | 'submitted' | 'approved' | 'rejected' | 'completed' | 'cancelled';
   reason?: string; // Rejection or cancellation reason
   submittedAt?: Date;
+  approvedAt?: Date;
+  approvedBy?: mongoose.Types.ObjectId;
+  autoApproved?: boolean;
 
   bacApprovalStatus?: 'pending' | 'approved' | 'rejected';
   bacApprovedBy?: mongoose.Types.ObjectId;
@@ -301,6 +305,19 @@ const EventSchema: Schema = new Schema({
   },
   submittedAt: {
     type: Date
+  },
+  approvedAt: {
+    type: Date,
+    default: undefined
+  },
+  approvedBy: {
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    default: undefined
+  },
+  autoApproved: {
+    type: Boolean,
+    default: false
   },
 
   bacApprovalStatus: {
