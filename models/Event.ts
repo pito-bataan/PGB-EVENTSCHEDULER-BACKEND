@@ -106,6 +106,7 @@ export interface IEvent extends Document {
   approvedAt?: Date;
   approvedBy?: mongoose.Types.ObjectId;
   autoApproved?: boolean;
+  usedAutoSuggest?: boolean; // Whether the user used the Auto Suggest feature when selecting a location
 
   bacApprovalStatus?: 'pending' | 'approved' | 'rejected';
   bacApprovedBy?: mongoose.Types.ObjectId;
@@ -316,6 +317,10 @@ const EventSchema: Schema = new Schema({
     default: undefined
   },
   autoApproved: {
+    type: Boolean,
+    default: false
+  },
+  usedAutoSuggest: {
     type: Boolean,
     default: false
   },

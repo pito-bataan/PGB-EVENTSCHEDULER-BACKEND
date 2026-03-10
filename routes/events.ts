@@ -1549,7 +1549,8 @@ router.post('/', authenticateToken, upload.fields([
       departmentRequirements,
       noAttachments,
       eventType,
-      locations
+      locations,
+      usedAutoSuggest
     } = req.body;
 
     // Parse locations array if it exists (for multiple conference rooms)
@@ -1680,6 +1681,7 @@ router.post('/', authenticateToken, upload.fields([
       taggedDepartments: taggedDepartments ? JSON.parse(taggedDepartments) : [],
       departmentRequirements: departmentRequirements ? JSON.parse(departmentRequirements) : {},
       eventType: eventType || 'simple',
+      usedAutoSuggest: usedAutoSuggest === 'true',
       status: 'submitted',
       bacApprovalStatus: String(location || '').trim() === '5th Flr. Training Room 1 (BAC)' ? 'pending' : undefined,
       submittedAt: new Date(),
