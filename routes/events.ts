@@ -158,6 +158,20 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
       (event as any).bacNotes = notes;
     }
 
+    // AUTO-APPROVE: If BAC approves, automatically approve the event in admin side
+    if (decisionRaw === 'approved') {
+      (event as any).status = 'approved';
+      (event as any).approvedAt = new Date();
+      (event as any).approvedBy = (req as any).user?._id; // BAC user who approved
+      (event as any).autoApprovedByBAC = true; // Flag to indicate it was auto-approved by BAC
+    }
+
+    // AUTO-REJECT: If BAC rejects, automatically reject the event in admin side
+    if (decisionRaw === 'rejected') {
+      (event as any).status = 'rejected';
+      (event as any).reason = notes || 'Rejected by BAC';
+    }
+
     const saved = await event.save();
     await saved.populate('createdBy', 'name email department');
 
@@ -186,6 +200,10 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
         })();
 
         adminUsers.forEach((a: any) => {
+          const notificationMessage = decisionRaw === 'approved'
+            ? `BAC has approved the request for "${saved.eventTitle}" - Event automatically approved`
+            : `BAC has ${decisionRaw} the request for "${saved.eventTitle}"`;
+
           io.to(`user-${String(a._id)}`).emit('new-notification', {
             notificationType: 'bac-approval-update',
             type: 'bac-approval-update',
@@ -196,12 +214,38 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
             requestor: saved.requestor,
             requestorDepartment: saved.requestorDepartment,
             bacApprovalStatus: (saved as any).bacApprovalStatus,
-            message: `BAC has ${decisionRaw} the request for "${saved.eventTitle}"`,
+            eventStatus: saved.status, // Include the event status
+            autoApprovedByBAC: (saved as any).autoApprovedByBAC,
+            message: notificationMessage,
             timestamp: Date.now()
           });
         });
       } catch (e) {
         console.error('❌ Failed to notify admins about BAC decision:', e);
+      }
+
+      // Notify the event creator (user who submitted the event)
+      try {
+        const creatorId = saved.createdBy?._id || saved.createdBy;
+        if (creatorId) {
+          const userNotificationMessage = decisionRaw === 'approved'
+            ? `Your event "${saved.eventTitle}" has been approved by BAC and is now automatically approved!`
+            : `Your event "${saved.eventTitle}" has been ${decisionRaw} by BAC`;
+
+          io.to(`user-${String(creatorId)}`).emit('new-notification', {
+            notificationType: 'event-status-update',
+            type: 'event-status-update',
+            eventId: saved._id,
+            eventTitle: saved.eventTitle,
+            status: saved.status,
+            bacApprovalStatus: (saved as any).bacApprovalStatus,
+            autoApprovedByBAC: (saved as any).autoApprovedByBAC,
+            message: userNotificationMessage,
+            timestamp: Date.now()
+          });
+        }
+      } catch (e) {
+        console.error('❌ Failed to notify event creator about BAC decision:', e);
       }
     }
 
@@ -955,6 +999,15 @@ router.patch('/:id/status', authenticateToken, async (req: Request, res: Respons
       if (!isAdmin && isOwner && (!reason || !String(reason).trim())) {
         updateData.reason = 'Requestor cancelled';
       }
+
+      // Record who cancelled and when (audit trail)
+      updateData.cancelledBy = {
+        userId: user._id,
+        name: user.name || user.username || 'Unknown',
+        email: user.email || '',
+        role: user.role || 'user'
+      };
+      updateData.cancelledAt = new Date();
     }
     
     // Update the event
@@ -1160,11 +1213,11 @@ router.patch('/:id/details', authenticateToken, upload.fields([
       });
     }
     
-    // Only allow editing if event is submitted (on-hold)
-    if (event.status !== 'submitted') {
+    // Allow editing if event is submitted or approved (but not completed/cancelled/rejected)
+    if (event.status !== 'submitted' && event.status !== 'approved') {
       return res.status(400).json({
         success: false,
-        message: 'You can only edit details of submitted events (before admin approval)'
+        message: 'You can only edit details of submitted or approved events'
       });
     }
     

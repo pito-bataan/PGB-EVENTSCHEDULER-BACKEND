@@ -106,6 +106,7 @@ export interface IEvent extends Document {
   approvedAt?: Date;
   approvedBy?: mongoose.Types.ObjectId;
   autoApproved?: boolean;
+  autoApprovedByBAC?: boolean; // Flag to indicate event was auto-approved by BAC
   usedAutoSuggest?: boolean; // Whether the user used the Auto Suggest feature when selecting a location
 
   bacApprovalStatus?: 'pending' | 'approved' | 'rejected';
@@ -304,6 +305,19 @@ const EventSchema: Schema = new Schema({
     type: String,
     required: false
   },
+  cancelledBy: {
+    type: {
+      userId: { type: Schema.Types.ObjectId, ref: 'User' },
+      name: { type: String },
+      email: { type: String },
+      role: { type: String }
+    },
+    default: undefined
+  },
+  cancelledAt: {
+    type: Date,
+    default: undefined
+  },
   submittedAt: {
     type: Date
   },
@@ -317,6 +331,10 @@ const EventSchema: Schema = new Schema({
     default: undefined
   },
   autoApproved: {
+    type: Boolean,
+    default: false
+  },
+  autoApprovedByBAC: {
     type: Boolean,
     default: false
   },
