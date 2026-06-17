@@ -1980,8 +1980,22 @@ router.get('/attachment/:filename', (req: Request, res: Response) => {
 router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { location, startDate, startTime, endDate, endTime, dateTimeSlots, departmentRequirements } = req.body;
+    const { location, locations, multipleLocations, startDate, startTime, endDate, endTime, dateTimeSlots, departmentRequirements } = req.body;
     const userId = (req as any).user._id;
+
+    // Parse locations if it's a JSON string (from FormData) or use as-is if already an array
+    let locationsArray: string[] | undefined = undefined;
+    if (locations) {
+      if (typeof locations === 'string') {
+        try {
+          locationsArray = JSON.parse(locations);
+        } catch (e) {
+          console.error('Failed to parse locations string:', e);
+        }
+      } else if (Array.isArray(locations)) {
+        locationsArray = locations;
+      }
+    }
 
     // Find the event and check ownership
     const event = await Event.findById(id);
@@ -2051,7 +2065,11 @@ router.put('/:id', authenticateToken, async (req: Request, res: Response) => {
       updatedAt: new Date()
     };
     
+    console.log('[PUT /:id] received body - location:', location, '| locations:', locations, '| locationsArray:', locationsArray, '| multipleLocations:', multipleLocations);
+    
     if (location !== undefined) updateData.location = location;
+    if (locationsArray !== undefined) updateData.locations = locationsArray;
+    if (multipleLocations !== undefined) updateData.multipleLocations = multipleLocations;
     if (startDate !== undefined && safeStartDate) updateData.startDate = safeStartDate;
     if (startTime !== undefined) updateData.startTime = startTime;
     if (endDate !== undefined && safeEndDate) updateData.endDate = safeEndDate;

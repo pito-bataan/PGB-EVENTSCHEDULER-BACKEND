@@ -63,14 +63,14 @@ const autoCompleteEvents = async (io: any) => {
   }
 };
 
-// Auto-approve submitted events that start today or within the next 2 days
+// Auto-approve submitted events that start within the next 10 days
 const autoApproveUrgentEvents = async (io: any) => {
   try {
     const nowManila = new Date(new Date().toLocaleString('en-US', { timeZone: 'Asia/Manila' }));
 
-    // Build a cutoff: midnight of (today + 2 days) in Manila time
+    // Build a cutoff: midnight of (today + 10 days) in Manila time
     const cutoff = new Date(nowManila);
-    cutoff.setDate(cutoff.getDate() + 2);
+    cutoff.setDate(cutoff.getDate() + 10);
     cutoff.setHours(23, 59, 59, 999);
 
     // Find all submitted events whose startDate is on or before the cutoff
@@ -98,8 +98,8 @@ const autoApproveUrgentEvents = async (io: any) => {
           (eventMidnight.getTime() - todayMidnight.getTime()) / (1000 * 60 * 60 * 24)
         );
 
-        // Auto-approve if same day OR within the next 2 days
-        if (diffDays >= 0 && diffDays <= 2) {
+        // Auto-approve if within the next 10 days (0-10 days from now)
+        if (diffDays >= 0 && diffDays <= 10) {
           (event as any).status = 'approved';
           (event as any).approvedAt = new Date();
           (event as any).autoApproved = true;
