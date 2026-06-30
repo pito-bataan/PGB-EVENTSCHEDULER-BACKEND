@@ -165,6 +165,17 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
       (event as any).approvedAt = new Date();
       (event as any).approvedBy = (req as any).user?._id; // BAC user who approved
       (event as any).autoApprovedByBAC = true; // Flag to indicate it was auto-approved by BAC
+
+      // Release department requirements so tagged departments can see the event
+      const deptReqs = (event as any).departmentRequirements || {};
+      for (const department in deptReqs) {
+        const requirements = deptReqs[department];
+        if (Array.isArray(requirements)) {
+          requirements.forEach((req: any) => {
+            req.requirementsStatus = 'released';
+          });
+        }
+      }
     }
 
     // AUTO-REJECT: If BAC rejects, automatically reject the event in admin side
@@ -246,7 +257,29 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
           });
         }
       } catch (e) {
-        console.error('❌ Failed to notify event creator about BAC decision:', e);
+        console.error('Failed to notify event creator about BAC decision:', e);
+      }
+
+      // Notify tagged departments when BAC auto-approves
+      if (decisionRaw === 'approved' && saved.taggedDepartments && saved.taggedDepartments.length > 0) {
+        io.emit('new-notification', {
+          type: 'event_approved',
+          eventId: saved._id,
+          eventTitle: saved.eventTitle,
+          status: 'approved',
+          message: `Event "${saved.eventTitle}" has been approved`,
+          timestamp: Date.now()
+        });
+
+        saved.taggedDepartments.forEach((dept: string) => {
+          io.emit('status-update', {
+            eventId: saved._id,
+            eventTitle: saved.eventTitle,
+            department: dept,
+            status: 'approved',
+            message: `Event "${saved.eventTitle}" has been approved. Requirements are now available for your department.`
+          });
+        });
       }
     }
 

@@ -100,6 +100,17 @@ const autoApproveUrgentEvents = async (io: any) => {
 
         // Auto-approve if within the next 10 days (0-10 days from now)
         if (diffDays >= 0 && diffDays <= 10) {
+          // Release department requirements so tagged departments can see the event
+          const deptReqs = (event as any).departmentRequirements || {};
+          for (const department in deptReqs) {
+            const requirements = deptReqs[department];
+            if (Array.isArray(requirements)) {
+              requirements.forEach((req: any) => {
+                req.requirementsStatus = 'released';
+              });
+            }
+          }
+
           (event as any).status = 'approved';
           (event as any).approvedAt = new Date();
           (event as any).autoApproved = true;
@@ -125,6 +136,28 @@ const autoApproveUrgentEvents = async (io: any) => {
               eventTitle: event.eventTitle,
               action: 'auto-approved'
             });
+
+            // Notify tagged departments
+            if (event.taggedDepartments && event.taggedDepartments.length > 0) {
+              io.emit('new-notification', {
+                type: 'event_approved',
+                eventId: event._id,
+                eventTitle: event.eventTitle,
+                status: 'approved',
+                message: `Event "${event.eventTitle}" has been approved`,
+                timestamp: Date.now()
+              });
+
+              event.taggedDepartments.forEach((dept: string) => {
+                io.emit('status-update', {
+                  eventId: event._id,
+                  eventTitle: event.eventTitle,
+                  department: dept,
+                  status: 'approved',
+                  message: `Event "${event.eventTitle}" has been approved. Requirements are now available for your department.`
+                });
+              });
+            }
           }
         }
       } catch (err) {
