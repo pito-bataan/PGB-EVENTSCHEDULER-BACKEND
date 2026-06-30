@@ -50,16 +50,17 @@ router.get('/bac/requests', authenticateToken, async (req: Request, res: Respons
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const query: any = {
-      location,
-      status: { $in: ['submitted', 'approved'] },
-      endDate: { $gte: today }
-    };
+    let query: any = {};
 
     if (status === 'pending') {
+      query.location = location;
+      query.status = { $in: ['submitted', 'approved'] };
+      query.endDate = { $gte: today };
       query.bacApprovalStatus = { $in: ['pending', undefined, null] };
-    } else if (status === 'approved' || status === 'rejected') {
-      query.bacApprovalStatus = status;
+    } else if (status === 'approved') {
+      query.bacApprovalStatus = 'approved';
+    } else if (status === 'rejected') {
+      query.bacApprovalStatus = 'rejected';
     }
 
     const [items, total] = await Promise.all([
