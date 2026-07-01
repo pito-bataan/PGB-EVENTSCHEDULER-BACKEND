@@ -176,6 +176,7 @@ router.patch('/:id/bac-approval', authenticateToken, async (req: Request, res: R
           });
         }
       }
+      (event as any).markModified('departmentRequirements');
     }
 
     // AUTO-REJECT: If BAC rejects, automatically reject the event in admin side

@@ -114,6 +114,7 @@ const autoApproveUrgentEvents = async (io: any) => {
           (event as any).status = 'approved';
           (event as any).approvedAt = new Date();
           (event as any).autoApproved = true;
+          (event as any).markModified('departmentRequirements');
           await event.save();
 
           approvedCount++;
